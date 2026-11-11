@@ -40,6 +40,17 @@ RW, RH = 900, 600            # resolution of the picture in the painter's head
 K = W / RW
 ASPECT = RW / RH
 
+
+def configure(fw, fh, ref_scale=0.5):
+    """Change the canvas size (and how finely the painter sees the subject)."""
+    global FW, FH, W, H, RW, RH, K, ASPECT
+    FW, FH = fw, fh
+    W, H = FW * SS, FH * SS
+    RW, RH = int(FW * ref_scale), int(FH * ref_scale)
+    K = W / RW
+    ASPECT = RW / RH
+
+
 HOR = 0.56                   # horizon
 SUN = (0.66, 0.468)
 
@@ -368,7 +379,7 @@ class Canvas:
         hs += m * thick * ridge
         self.count += 1
 
-    def finish(self):
+    def finish(self, relief=1.0):
         """Light the paint relief from the upper left and reduce to final size."""
         hgt = self.height
         yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
@@ -380,8 +391,8 @@ class Canvas:
         gx[:, 1:-1] = hgt[:, 2:] - hgt[:, :-2]
         gy[1:-1, :] = hgt[2:, :] - hgt[:-2, :]
         slope = gx * 0.55 + gy * 0.65
-        shade = np.clip(1 + 1.9 * slope, 0.62, 1.4)
-        spec = np.clip(slope - 0.045, 0, 0.2) * 190
+        shade = np.clip(1 + 1.9 * relief * slope, 0.62, 1.4)
+        spec = np.clip(slope - 0.045, 0, 0.2) * 190 * relief
         img = np.asarray(self.img, np.float32) * shade[..., None] + spec[..., None]
         out = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
         return out.resize((FW, FH), Image.LANCZOS)
@@ -391,12 +402,12 @@ class Canvas:
 # 3. the painter
 # ----------------------------------------------------------------------------
 class Painter:
-    def __init__(self, scene):
+    def __init__(self, scene, levels=(12, 5, 2, 1, 0)):
         self.s = scene
         self.c = Canvas()
         ref8 = Image.fromarray(scene["ref"].astype(np.uint8))
         self.levels = {r: np.asarray(ref8.filter(ImageFilter.GaussianBlur(r)), np.float32)
-                       if r else scene["ref"] for r in (12, 5, 2, 1, 0)}
+                       if r else scene["ref"] for r in levels}
         self.ax, self.ay = scene["ax"], scene["ay"]
 
     # -- looking at the picture ---------------------------------------------
