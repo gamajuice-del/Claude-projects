@@ -229,7 +229,7 @@ export function generateWorld(opts: WorldOpts): World {
     else if (e > HILL - 0.02 && h > 0.72) { r = R_STONE; amt = 2000 + h * 4000; }
     else if (h > 0.985) { r = R_STONE; amt = 1500; }
     w.res[i] = r;
-    w.resAmt[i] = Math.min(65535, Math.round(amt));
+    w.resAmt[i] = Math.min(65535, Math.round(amt * 4));
   }
 
   // --- volcanoes sit on the most violent convergent boundaries ---

@@ -2,7 +2,7 @@
 import { clamp, clamp01 } from './rng';
 import { addEvent, remember } from './history';
 import { ageOf, addFame, fullName, killPerson, leaveHome, rehome } from './people';
-import { I_URBAN, M, PARTY, Party, Person, Settlement, Sim, Civ, W_LAND, TK_UNUSED, ADULT_AGE } from './types';
+import { I_URBAN, M, PARTY, Party, Person, Settlement, Sim, Civ, W_LAND, ADULT_AGE } from './types';
 import { MOUNTAIN, SEA, forDisc, hasFreshWater, meanTemp } from './world';
 import { findPath, findPortTile, landStepCost, landingNear } from './path';
 import { foundSettlement, startPlague } from './settlement';
@@ -75,7 +75,7 @@ export function siteScore(sim: Sim, i: number, civ: Civ | undefined): number {
   const farms = !civ || civ.tech[TK.agriculture] === 1;
   const fishes = !civ || civ.tech[TK.fishing] === 1;
   let sc = 0, crowded = false;
-  forDisc(w, x, y, 5, (j, d) => {
+  forDisc(w, x, y, 9, (j, d) => {
     if (w.imp[j] === I_URBAN) crowded = true;
     if (d > 3.2) return;
     if (w.water[j] !== W_LAND) {
@@ -124,7 +124,7 @@ export function findSite(sim: Sim, cx: number, cy: number, minD: number, maxD: n
 
 /** families who walk out to found their own village — loyal to the old realm only if it can still reach them */
 export function sendPioneers(sim: Sim, s: Settlement, civ: Civ, group: Person[]): void {
-  const site = findSite(sim, s.x, s.y, 6, 16, civ, true);
+  const site = findSite(sim, s.x, s.y, 10, 20, civ, true);
   if (site.tile < 0) return;
   const path = findPath(sim, s.tile, site.tile, false, 8000);
   if (!path) return;
@@ -371,4 +371,3 @@ function settle(sim: Sim, p: Party, people: Person[]): void {
   civ.lastSettle = sim.tick;
   addEvent(sim, 'found', 2, `Settlers from ${from ? from.name : 'the homeland'} founded ${s.name} for the ${civ.name}.`, [civ.id], [leader.id], s.id, x, y);
 }
-export { TK_UNUSED };

@@ -207,10 +207,10 @@ export function deathChance(sim: Sim, p: Person, age: number, civ: Civ | undefin
   const m = civ?.mods;
   const ht = m ? Math.min(0.85, m.health) : 0;
   let q: number;
-  if (age < 1.5) q = 0.15;
-  else if (age < 5) q = 0.035;
-  else if (age < 15) q = 0.008;
-  else if (age < 40) q = 0.007;
+  if (age < 1.5) q = 0.11;
+  else if (age < 5) q = 0.022;
+  else if (age < 15) q = 0.006;
+  else if (age < 40) q = 0.0055;
   else if (age < 60) q = 0.012 + (age - 40) * 0.0012;
   else q = 0.04 * Math.pow(1.095, age - 60 - (m ? m.lifespan : 0));
   q *= age < 15 ? 1 - ht * 0.9 : 1 - ht * 0.45;

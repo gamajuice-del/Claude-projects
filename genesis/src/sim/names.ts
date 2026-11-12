@@ -3,14 +3,14 @@
 import { RNG } from './rng';
 import { GOV, Language, Sim } from './types';
 
-const CONS = ['p', 't', 'k', 'b', 'd', 'g', 'm', 'n', 's', 'z', 'sh', 'th', 'f', 'v', 'h', 'l', 'r', 'y', 'w', 'ch', 'j', 'kh', 'ts', 'q', 'x', 'zh', 'br', 'dr', 'kr', 'tr', 'st', 'sk', 'gl', 'vr', 'ny', 'mb'];
-const VOWS = ['a', 'e', 'i', 'o', 'u', 'ae', 'ai', 'ou', 'ia', 'ei', 'oa', 'au', 'ee', 'uu', 'y'];
+const CONS = ['p', 't', 'k', 'b', 'd', 'g', 'm', 'n', 's', 'z', 'sh', 'th', 'f', 'v', 'h', 'l', 'r', 'y', 'w', 'ch', 'j', 'kh', 'ts', 'q', 'x', 'br', 'dr', 'kr', 'tr', 'st', 'sk', 'gl', 'vr'];
+const VOWS = ['a', 'e', 'i', 'o', 'u'];
+const DIPH = ['ae', 'ai', 'ou', 'ia', 'ei', 'au', 'ee', 'y', 'oa'];
 const CODAS = ['n', 'r', 'l', 's', 'm', 'th', 'k', 'sh', 'd', 'x', 'rn', 'nd', 'ng', 'st', 't', 'rk', 'ld', 'ss'];
-const PATS = ['CV', 'CVC', 'V', 'VC', 'CVV', 'CV', 'CVC'];
 const PLACE_SUF = ['a', 'ar', 'en', 'os', 'ia', 'um', 'eth', 'ora', 'gard', 'ton', 'holm', 'ak', 'ur', 'esh', 'ana', 'mar', 'dun', 'heim', 'pol', 'abad', 'wick', 'ford', 'is', 'ost', 'ika', 'var', 'tal', 'kesh', 'mouth', 'zan'];
 const MALE_SUF = ['', 'o', 'us', 'an', 'ar', 'ik', 'or', 'en', 'ek', 'im', 'ul', 'as', 'ir', 'und', 'ric'];
 const FEM_SUF = ['a', 'e', 'i', 'ia', 'ys', 'ra', 'el', 'ina', 'eth', 'wen', 'ane', 'isa', 'iel', 'ue', 'ali'];
-const SHIFTS: [string, string][] = [['p', 'b'], ['k', 'g'], ['t', 'd'], ['s', 'sh'], ['t', 'th'], ['k', 'kh'], ['b', 'v'], ['g', 'h'], ['s', 'z'], ['d', 'j'], ['f', 'h'], ['l', 'r'], ['r', 'l'], ['ch', 'ts'], ['sh', 'zh'], ['v', 'w'], ['q', 'k'], ['x', 'kh']];
+const SHIFTS: [string, string][] = [['p', 'b'], ['k', 'g'], ['t', 'd'], ['s', 'sh'], ['t', 'th'], ['k', 'kh'], ['b', 'v'], ['g', 'h'], ['s', 'z'], ['d', 'j'], ['f', 'h'], ['l', 'r'], ['r', 'l'], ['ch', 'ts'], ['v', 'w'], ['q', 'k'], ['x', 'kh']];
 
 function sample<T>(rng: RNG, pool: readonly T[], k: number): T[] {
   const a = pool.slice();
@@ -38,7 +38,7 @@ export function genLanguage(sim: Sim, parent = -1): Language {
     cons = Array.from(new Set(cons));
     if (rng.chance(0.6)) cons.push(rng.pick(CONS));
     const vowels = p.vowels.slice();
-    if (rng.chance(0.7)) vowels[rng.int(vowels.length)] = rng.pick(VOWS);
+    if (rng.chance(0.5)) vowels[rng.int(vowels.length)] = rng.pick(rng.chance(0.3) ? DIPH : VOWS);
     const placeSuf = p.placeSuf.slice();
     placeSuf[rng.int(placeSuf.length)] = rng.pick(PLACE_SUF);
     const maleSuf = p.maleSuf.slice();
@@ -50,9 +50,9 @@ export function genLanguage(sim: Sim, parent = -1): Language {
     lang = {
       id, name: '', parent: -1,
       cons: sample(rng, CONS, 7 + rng.int(6)),
-      vowels: sample(rng, VOWS, 3 + rng.int(3)),
+      vowels: sample(rng, VOWS, 3 + rng.int(3)).concat(rng.chance(0.6) ? [rng.pick(DIPH)] : []),
       codas: sample(rng, CODAS, 3 + rng.int(4)),
-      pat: sample(rng, PATS, 2 + rng.int(3)),
+      pat: [String(Math.round(15 + rng.next() * 45))], // chance (in %) that a syllable is closed by a coda
       placeSuf: sample(rng, PLACE_SUF, 4 + rng.int(3)),
       maleSuf: sample(rng, MALE_SUF, 4),
       femSuf: sample(rng, FEM_SUF, 4),
@@ -63,24 +63,21 @@ export function genLanguage(sim: Sim, parent = -1): Language {
   return lang;
 }
 
-function syllable(l: Language, rng: RNG): string {
-  const pat = rng.pick(l.pat);
-  let s = '';
-  for (let k = 0; k < pat.length; k++) {
-    const ch = pat[k];
-    if (ch === 'C') s += k === pat.length - 1 && pat.length > 1 ? rng.pick(l.codas) : rng.pick(l.cons);
-    else s += rng.pick(l.vowels);
-  }
+function syllable(l: Language, rng: RNG, first: boolean, last: boolean): string {
+  const coda = Number(l.pat[0]) / 100;
+  let s = first && rng.chance(0.18) ? '' : rng.pick(l.cons);
+  s += rng.pick(l.vowels);
+  if (rng.chance(last ? coda : coda * 0.35)) s += rng.pick(l.codas);
   return s;
 }
 
 export function word(l: Language, rng: RNG, minSyl: number, maxSyl: number): string {
   const ns = minSyl + rng.int(maxSyl - minSyl + 1);
   let s = '';
-  for (let k = 0; k < ns; k++) s += syllable(l, rng);
-  // tidy: collapse triple letters and awkward doubles
-  s = s.replace(/(.)\1\1+/g, '$1$1').replace(/([aeiouy])\1([aeiouy])/g, '$1$2');
-  if (s.length > 11) s = s.slice(0, 10);
+  for (let k = 0; k < ns; k++) s += syllable(l, rng, k === 0, k === ns - 1);
+  // tidy: no triple letters, no long vowel runs
+  s = s.replace(/(.)\1\1+/g, '$1$1').replace(/([aeiouy]{2})[aeiouy]+/g, '$1');
+  if (s.length > 9) s = s.slice(0, 9).replace(/[^aeiouy]{2,}$/, (m) => m[0]);
   return s;
 }
 
@@ -96,22 +93,29 @@ export function givenName(sim: Sim, langId: number, sex: number): string {
   const l = sim.languages.get(langId)!;
   const rng = sim.rng;
   let s = word(l, rng, 1, 2);
-  if (s.length < 3) s += syllable(l, rng);
-  s += rng.pick(sex === 1 ? l.maleSuf : l.femSuf);
+  if (s.length < 3) s += syllable(l, rng, false, true);
+  const suf = rng.pick(sex === 1 ? l.maleSuf : l.femSuf);
+  if (suf && /[aeiouy]$/.test(s) && /^[aeiouy]/.test(suf)) s = s.replace(/[aeiouy]+$/, '');
+  s += suf;
   return cap(s);
 }
 
 export function familyName(sim: Sim, langId: number): string {
   const l = sim.languages.get(langId)!;
   const rng = sim.rng;
-  const mk = () => cap(word(l, rng, 2, 3));
+  const mk = () => cap(word(l, rng, 2, 2));
   return unique(sim, mk(), mk);
 }
 
 export function placeName(sim: Sim, langId: number): string {
   const l = sim.languages.get(langId)!;
   const rng = sim.rng;
-  const mk = () => cap(word(l, rng, 1, 2) + rng.pick(l.placeSuf));
+  const mk = () => {
+    let b = word(l, rng, 1, 2);
+    const suf = rng.pick(l.placeSuf);
+    if (/[aeiouy]$/.test(b) && /^[aeiouy]/.test(suf)) b = b.replace(/[aeiouy]+$/, '') || b;
+    return cap(b + suf);
+  };
   return unique(sim, mk(), mk);
 }
 

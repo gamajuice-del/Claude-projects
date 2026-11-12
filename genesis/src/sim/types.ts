@@ -391,6 +391,7 @@ export interface War {
   battles: number;
   outcome: string;
   lastAction: number;
+  taken: number[]; // flattened [settlementId, fromCivId, toCivId]
 }
 
 export interface Army {
@@ -420,6 +421,8 @@ export interface Army {
   bStart: number; // strength when the battle began
   bTick: number;
   moveAcc: number;
+  equip: number;
+  n0: number; // strength when raised
 }
 
 export const PARTY = { migrants: 0, settlers: 1, caravan: 2, refugees: 3 } as const;
@@ -666,6 +669,7 @@ export interface Runtime {
   pathGen: number;
   tileCivCache: Int16Array | null;
   pending: { civ: number; prev: number; cause: string }[];
+  terrainPending: boolean;
 }
 
 /** transient visual effect requests from the sim to the renderer (never read back by the sim) */

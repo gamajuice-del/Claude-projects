@@ -3,7 +3,7 @@
 import { clamp, clamp01 } from './rng';
 import { addEvent, remember } from './history';
 import { placeName } from './names';
-import { JobCtx, LifeCtx, addFame, ageOf, fullName, jobSkill, killPerson, practice, rehome, setJob, tryBirth, yearlyLife } from './people';
+import { JobCtx, LifeCtx, addFame, ageOf, chooseJob, fullName, jobSkill, killPerson, practice, rehome, setJob, tryBirth, yearlyLife } from './people';
 import {
   ADULT_AGE, B, Civ, G, GOOD_BASE, I_CAMP, I_FARM, I_MINE, I_NONE, I_PASTURE, I_PORT, I_RUIN, I_URBAN, J, M, NB, NG, NJ, Person,
   RES_GOOD, R_COAL, R_COPPER, R_GOLD, R_IRON, R_OIL, R_SALT, R_STONE, Settlement, Sim, TICKS_PER_YEAR, TITLE, W_LAND, monthOf,
@@ -16,7 +16,7 @@ import { dispatchTrade } from './trade';
 import { sendMigrants, sendPioneers } from './parties';
 import { relationOf } from './civ';
 
-const Y0 = 10; // food per perfect farm tile per month
+const Y0 = 12; // food per perfect farm tile per month
 const skillSum = new Float64Array(NJ);
 const prodVal = new Float64Array(NJ);
 let desire = new Float32Array(2048);
@@ -93,7 +93,7 @@ export function claimTerritory(sim: Sim, s: Settlement): void {
   const w = sim.world;
   const civ = sim.civs.get(s.civ)!;
   const pop = s.people.length;
-  const target = clamp(2.6 + Math.sqrt(pop) / 3.2, 3, Math.min(11, 4.5 + civ.mods.admin * 0.45));
+  const target = clamp(2.6 + Math.sqrt(pop) / 3.2, 3, Math.min(13, 4.5 + civ.mods.admin * 0.5));
   s.radius = target;
   let claimed = false;
   const lm = w.landmass[s.tile];
@@ -262,7 +262,7 @@ function planBuilding(sim: Sim, s: Settlement, civ: Civ, pop: number): void {
     switch (b) {
       case B.granary: cap = 1 + pop / 300; sc = 1.4 + (s.hungerMonths > 0 ? 1 : 0); break;
       case B.market: cap = pop > 80 ? 1 + pop / 400 : 0; sc = 0.9 + civ.pTrade * 1.5 + s.routes.length * 0.15; break;
-      case B.workshop: cap = pop > 50 ? 1 + pop / 250 : 0; sc = 1 + (s.jobCount[J.artisan] >= 3 + pop / 25 + lvl * 10 ? 1 : 0); break;
+      case B.workshop: cap = pop > 50 ? 1 + pop / 250 : 0; sc = 1 + (s.jobCount[J.artisan] >= 3 + pop / 10 + lvl * 12 ? 1 : 0); break;
       case B.temple: cap = 1 + pop / 400; sc = 0.7 + civ.pPiety * 2 + s.unrest; break;
       case B.library: cap = 1 + pop / 450; sc = 0.6 + civ.pScience * 2.2; break;
       case B.walls: cap = pop > 70 ? Math.min(civ.mods.wallMax, 1 + pop / 500) : 0; sc = 0.4 + civ.pMilitary + (threatened ? 1.6 : 0) + (sim.tick - s.lastRaid < 30 * TICKS_PER_YEAR ? 1 : 0); break;
@@ -371,7 +371,7 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
   const anomaly = rainAnomaly(w, sim.climate, s.x, s.y, tick, P.climateVolatility);
   if (anomaly < 0.62 && s.farms.length > 3) {
     s.drought++;
-    if (s.drought === 5) addEvent(sim, 'drought', 2, `Drought grips ${s.name}. The fields are cracking.`, [civ.id], [], s.id, s.x, s.y);
+    if (s.drought === 5 && pop > 60 && tick - s.growthNote > 8 * TICKS_PER_YEAR) addEvent(sim, 'drought', 2, `Drought grips ${s.name}. The fields are cracking.`, [civ.id], [], s.id, s.x, s.y);
   } else s.drought = Math.max(0, s.drought - 2);
   const besieged = s.siege >= 0;
   const workers = Math.max(1, adults - away);
@@ -451,7 +451,7 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
   // ------------------------------------------------------------- hunting & gathering
   if (jc[J.hunter] > 0) {
     const season = 0.35 + 0.65 * clamp01((T - 1) / 12);
-    const potential = s.wildCap * 0.2 * season;
+    const potential = s.wildCap * 0.3 * season;
     const bow = civ.tech[TK.archery] === 1 ? 1.2 : 1;
     let got = Math.min(jc[J.hunter] * 2.1 * toolF, potential);
     // real animals are taken from real herds
@@ -639,10 +639,11 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
   for (let g = 0; g < NG; g++) stock[g] += prod[g];
   // ------------------------------------------------------------- research
   {
-    let rp = 0.12 * Math.sqrt(adults);
-    if (jc[J.scholar] > 0) rp += jc[J.scholar] * 0.13 * (0.6 + 1.2 * avgSk(J.scholar)) * (1 + s.bld[B.library] * 0.15 + s.bld[B.school] * 0.25);
+    let rp = 0;
+    if (jc[J.scholar] > 0) rp = jc[J.scholar] * 0.075 * (0.6 + 1.2 * avgSk(J.scholar)) * (1 + s.bld[B.library] * 0.15 + s.bld[B.school] * 0.25) * m.research;
     if (civ.laws.schooling) rp *= 1.12;
-    rp *= m.research * P.research * dmgF;
+    rp += 0.035 * Math.sqrt(adults); // craft lore and elders' wisdom
+    rp *= P.research * dmgF * (civ.golden > 0 ? 1.15 : 1);
     if (civ.researching >= 0) civ.research[civ.researching] += rp;
   }
   // ------------------------------------------------------------- wages
@@ -668,11 +669,11 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
   const hasFishing = civ.tech[TK.fishing] === 1;
   slots[J.farmer] = hasAgri ? Math.floor((s.farms.length + s.farmable) * effLabor + 0.5) - jc[J.farmer] : 0;
   slots[J.fisher] = s.coastal ? Math.floor(s.waterTiles * (hasFishing ? 0.3 : 0.1)) - jc[J.fisher] : 0;
-  slots[J.hunter] = Math.floor((s.wildCap * 0.2) / 2.1) + 2 - jc[J.hunter];
+  slots[J.hunter] = Math.floor((s.wildCap * 0.3) / 2.1) + 2 - jc[J.hunter];
   slots[J.herder] = civ.tech[TK.husbandry] === 1 ? Math.floor(s.pastureCap / 14) + 1 - jc[J.herder] : 0;
   slots[J.woodcutter] = s.forestTiles > 0 ? Math.max(1, Math.floor(s.forestTiles * 0.6)) - jc[J.woodcutter] : 0;
   slots[J.miner] = s.mines.length * 5 - jc[J.miner];
-  slots[J.artisan] = Math.floor(3 + pop / 25 + s.bld[B.workshop] * 10 + s.bld[B.factory] * 40) - jc[J.artisan];
+  slots[J.artisan] = Math.floor(3 + pop / 9 + s.bld[B.workshop] * 12 + s.bld[B.factory] * 50 + s.bld[B.market] * 8 + Math.min(40, s.tradeVol * 0.05)) - jc[J.artisan];
   slots[J.merchant] = (pop > 30 && s.routes.length > 0 ? 1 + Math.floor(pop / 70) + s.bld[B.market] * 3 : 0) - jc[J.merchant];
   const quota = pop > 40 || civ.soldierTarget > 0.08 ? Math.round(adults * civ.soldierTarget) : 0;
   slots[J.soldier] = quota - jc[J.soldier];
@@ -753,13 +754,13 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
   const saltNeed = present * 0.015;
   const saltSat = Math.min(1, stock[G.salt] / (saltNeed + 0.001));
   stock[G.salt] = Math.max(0, stock[G.salt] - saltNeed);
-  const housing = s.urban.length * m.density + 12;
+  const housing = s.urban.length * m.density + 8;
   s.housing = housing;
   const crowd = present / housing;
   const danger = (besieged ? 1 : 0) + (s.plague > 0 ? 0.6 : 0) + (s.occupier >= 0 ? 0.4 : 0);
   const worldPop = sim.people.size;
   const capF = Math.max(0, 1 - Math.pow(worldPop / P.popCap, 3));
-  const birthBase = 0.0215 * P.birthRate * m.fertility * capF * (1 - 0.5 * Math.min(1, m.health / 0.7)) * (civ.laws.schooling ? 0.9 : 1) * (crowd < 0.9 ? 1 : clamp(1.9 - crowd, 0.15, 1)) * (besieged ? 0.3 : 1);
+  const birthBase = 0.029 * P.birthRate * m.fertility * capF * (1 - 0.5 * Math.min(1, m.health / 0.7)) * (civ.laws.schooling ? 0.9 : 1) * (crowd < 0.9 ? 1 : clamp(1.9 - crowd, 0.15, 1)) * (besieged ? 0.3 : 1);
   const taxRate = civ.laws.tax;
   const taxEff = m.taxEff * Math.min(1, 0.55 + (jc[J.official] * 140) / (pop + 60));
   const templeJoy = Math.min(0.1, s.bld[B.temple] * 0.03 + jc[J.priest] * 0.004);
@@ -835,9 +836,10 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
         rents += rent;
       }
       practice(p, job, civ.laws.schooling ? 0.006 : 0.004);
+      if (job === J.laborer && p.title === TITLE.none && rng.chance(0.5)) chooseJob(sim, p, s, civ, lifeCtx);
       if (job === J.merchant && p.party < 0) MERCH.push(p);
       // small comforts
-      const want = market ? Math.min(0.4, p.wealth / (price[G.wares] * 30)) : 0.06;
+      const want = market ? Math.min(0.6, p.wealth / (price[G.wares] * 25)) : 0.08;
       waresWant += want;
       let lux = 0;
       if (want > 0 && stock[G.wares] >= want) {
@@ -882,7 +884,7 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
   // ------------------------------------------------------------- famine bookkeeping
   if (s.fedAvg < 0.7) {
     s.hungerMonths++;
-    if (s.hungerMonths === 4) {
+    if (s.hungerMonths === 4 && pop > 30) {
       const why = s.siege >= 0 ? 'the siege' : s.blockaded ? 'the blockade' : s.drought >= 4 ? 'drought' : s.damage > 0.3 ? 'the destruction' : T < 0 ? 'a hard winter' : 'failed harvests';
       addEvent(sim, 'famine', s.people.length > 150 ? 3 : 2, `Famine in ${s.name}: ${why} has emptied the granaries.`, [civ.id], [], s.id, s.x, s.y);
       const mem = `the famine of year ${Math.floor(tick / TICKS_PER_YEAR) + 1} at ${s.name}`;
@@ -948,9 +950,10 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
     if (s.build.progress >= s.build.need) finishBuilding(sim, s, civ);
   } else if (!besieged && (tick + s.id) % 12 < 4) planBuilding(sim, s, civ, pop);
   if (crowd > 0.88 && !besieged) {
-    const woodCost = civ.era >= 3 ? 5 : 8;
-    const stoneCost = civ.tech[TK.masonry] === 1 ? 3 : 0;
-    if (stock[G.wood] >= woodCost && stock[G.stone] >= stoneCost) {
+    // stone houses where there is stone; otherwise more timber
+    const stoneCost = civ.tech[TK.masonry] === 1 && stock[G.stone] >= 3 ? 3 : 0;
+    const woodCost = stoneCost > 0 ? 4 : 7;
+    if (stock[G.wood] >= woodCost) {
       if (growUrban(sim, s)) {
         stock[G.wood] -= woodCost;
         stock[G.stone] -= stoneCost;
@@ -962,7 +965,7 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
     const foreign = s.cultureMajor !== civ.culture ? 0.15 : 0;
     const occupied = s.occupier >= 0 ? 0.3 : s.originalCiv !== s.civ ? 0.12 : 0;
     const garrison = Math.min(0.3, ((jc[J.soldier] - away) / (pop + 1)) * 2.5);
-    const target = clamp01((0.56 - s.happyAvg) * 1.7 + (0.5 - s.loyalAvg) * 1.3 + foreign + occupied + s.gini * 0.2 + civ.exhaustion * 0.3 + (taxRate - 0.2) * 0.6 - garrison - templeJoy - (civ.legitimacy - 0.5) * 0.2) * P.unrest;
+    const target = clamp01((0.56 - s.happyAvg) * 1.7 + (0.5 - s.loyalAvg) * 1.3 + foreign + occupied + s.gini * 0.2 + civ.exhaustion * 0.3 + (taxRate - 0.2) * 0.6 + Math.max(0, civ.settlements.length - m.admin - 1) * 0.025 - garrison - templeJoy - (civ.legitimacy - 0.5) * 0.2) * P.unrest;
     s.unrest += (target - s.unrest) * 0.15;
     s.rebelHeat = s.unrest > 0.62 ? s.rebelHeat + 1 : Math.max(0, s.rebelHeat - 1);
   }

@@ -3,7 +3,7 @@
 import { clamp, clamp01, hash2 } from './rng';
 import { addEvent } from './history';
 import { speciesName } from './names';
-import { Herd, I_FARM, I_NONE, I_URBAN, Sim, Species, TICKS_PER_YEAR, W_LAND, W_OCEAN } from './types';
+import { Herd, I_FARM, I_MINE, I_NONE, I_PASTURE, I_URBAN, Sim, Species, TICKS_PER_YEAR, W_LAND, W_OCEAN } from './types';
 import { DX8, DY8, MOUNTAIN, SEA, classifyBiome, growthPotential, markDirty, meanTemp, rainAnomaly, tempAt } from './world';
 import { ignite } from './climate';
 
@@ -12,7 +12,7 @@ const SLICES = 16;
 export function updateEcology(sim: Sim): void {
   updateTiles(sim);
   updateFires(sim);
-  if (sim.tick % 4 === 0) rebuildHerdGrid(sim);
+  rebuildHerdGrid(sim); // every tick, so a freshly loaded world sees exactly what the original would
   updateHerds(sim);
 }
 
@@ -70,7 +70,7 @@ function updateTiles(sim: Sim): void {
     w.veg[i] = clamp01(v);
     // --- forest succession: spreads from neighbours where climate allows ---
     let fo = w.forest[i];
-    if (imp === I_NONE || imp > I_URBAN) {
+    if (imp !== I_FARM && imp !== I_URBAN && imp !== I_MINE) {
       const mt = meanTemp(w, c, i);
       let fp = clamp01((m - 0.3) * 2.3) * clamp01((mt + 4) / 8) * clamp01((40 - mt) / 6);
       if (w.elev[i] - w.seaLevel + SEA > MOUNTAIN) fp *= 0.2;
@@ -80,7 +80,7 @@ function updateTiles(sim: Sim): void {
         if (x < W - 1) nf += w.forest[i + 1];
         if (y > 0) nf += w.forest[i - W];
         if (y < H - 1) nf += w.forest[i + W];
-        fo += 0.016 * (0.3 + g) * (nf * 0.4 + fo + 0.012) * P.growth * (0.4 + 0.6 * w.fert[i]);
+        fo += 0.03 * (0.3 + g) * (nf * 0.5 + fo + 0.04) * P.growth * (0.4 + 0.6 * w.fert[i]) * (imp === I_PASTURE ? 0.3 : 1);
         if (fo > fp) fo = fp;
       } else fo -= 0.03 * (fo - fp) + (m < 0.15 ? 0.01 : 0);
       w.forest[i] = clamp01(fo);
@@ -335,6 +335,13 @@ function updateHerds(sim: Sim): void {
   landTiles = w.n * 0.35;
   const maxHerds = Math.floor((landTiles / 28) * sim.params.wildlife) + 20;
   const dead: number[] = [];
+  // packs are territorial and no grazer monopolises the range: per-kind herd budgets
+  let predHerds = 0;
+  const perSpecies = new Map<number, number>();
+  for (const h of sim.herds.values()) {
+    perSpecies.set(h.sp, (perSpecies.get(h.sp) || 0) + 1);
+    if (sim.species.get(h.sp)!.diet === 1) predHerds++;
+  }
   for (const h of sim.herds.values()) {
     if (h.id % 4 !== phase) continue;
     const sp = sim.species.get(h.sp)!;
@@ -371,29 +378,33 @@ function updateHerds(sim: Sim): void {
       h.energy += (got / (need + 1e-6) - 0.55) * 0.3;
       if (sp.diet === 2) h.energy += 0.04; // omnivores scrape by
     } else {
-      // predators hunt the nearest catchable herd
-      herdsNear(sim, h.x, h.y, 4, tmpHerds);
-      let best: Herd | null = null,
-        bestScore = 0.15;
-      for (const o of tmpHerds) {
-        if (o.id === h.id) continue;
-        const osp = sim.species.get(o.sp)!;
-        if (osp.diet === 1) continue;
-        const sc = 0.45 + (h.speed - o.speed) * 0.6 + h.fierce * 0.25 - Math.max(0, o.size - h.size - 0.15) * (1.4 - Math.min(1, h.n / 8) * 0.6) - o.fierce * 0.25;
-        if (sc > bestScore) {
-          bestScore = sc;
-          best = o;
+      // predators hunt the most catchable herd in range — unless they are already full
+      if (h.energy > 0.85) h.energy -= 0.03;
+      else {
+        herdsNear(sim, h.x, h.y, 6, tmpHerds);
+        let best: Herd | null = null,
+          bestScore = 0.12;
+        const pack = 1 - Math.min(1, h.n / 10) * 0.5;
+        for (const o of tmpHerds) {
+          if (o.id === h.id) continue;
+          const osp = sim.species.get(o.sp)!;
+          if (osp.diet === 1) continue;
+          const sc = 0.55 + (h.speed - o.speed) * 0.5 + h.fierce * 0.2 - Math.max(0, o.size - h.size - 0.05) * 1.6 * pack - o.fierce * 0.3 - (o.n < 8 ? 0.25 : 0);
+          if (sc > bestScore) {
+            bestScore = sc;
+            best = o;
+          }
         }
+        if (best && rng.chance(clamp01(bestScore))) {
+          const osp = sim.species.get(best.sp)!;
+          const want = Math.max(1, Math.ceil((h.n * (0.3 + h.size) * 0.2) / (0.2 + best.size)));
+          const kills = Math.min(want, Math.ceil(best.n * 0.25));
+          best.n -= kills;
+          osp.count -= kills;
+          h.energy += ((kills * (0.2 + best.size)) / (h.n * (0.3 + h.size))) * 1.4;
+          best.energy -= 0.03;
+        } else h.energy -= 0.045;
       }
-      if (best && rng.chance(clamp01(bestScore))) {
-        const osp = sim.species.get(best.sp)!;
-        const want = Math.max(1, Math.ceil((h.n * (0.3 + h.size) * 0.22) / (0.2 + best.size)));
-        const kills = Math.min(best.n, want);
-        best.n -= kills;
-        osp.count -= kills;
-        h.energy += (kills * (0.2 + best.size)) / (h.n * (0.3 + h.size)) * 0.9;
-        best.energy -= 0.03;
-      } else h.energy -= 0.075;
     }
     h.energy = clamp(h.energy, 0, 1);
     // --- births and deaths ---
@@ -403,8 +414,11 @@ function updateHerds(sim: Sim): void {
       const exp = h.n * h.fecund * 0.075 * (h.energy - 0.3) * sim.params.wildlife;
       h.n += Math.floor(exp) + (rng.chance(exp % 1) ? 1 : 0);
     }
-    if (h.energy < 0.22) h.n -= Math.max(1, Math.ceil(h.n * 0.13));
-    if (rng.chance(0.25)) h.n -= Math.ceil(h.n * 0.02 * (1 + stress * 0.1));
+    if (h.energy < 0.22) h.n -= Math.max(1, Math.ceil(h.n * 0.1));
+    {
+      const exp = h.n * (sp.diet === 1 ? 0.005 : 0.008) * (1.2 - h.size * 0.9) * (1 + stress * 0.1);
+      h.n -= Math.floor(exp) + (rng.chance(exp % 1) ? 1 : 0);
+    }
     if (h.n <= 0) {
       sp.count += -before;
       dead.push(h.id);
@@ -412,16 +426,20 @@ function updateHerds(sim: Sim): void {
     }
     // --- split big herds; offspring herds carry mutated genes ---
     if (h.n > sp.herd * 1.8) {
-      if (sim.herds.size < maxHerds) {
+      const mine = perSpecies.get(sp.id) || 0;
+      const room = sim.herds.size < maxHerds && mine < maxHerds * 0.22 && (sp.diet !== 1 || predHerds < maxHerds * 0.14);
+      if (room) {
+        perSpecies.set(sp.id, mine + 1);
+        if (sp.diet === 1) predHerds++;
         const half = Math.floor(h.n / 2);
         h.n -= half;
         const nh = spawnHerd(sim, sp, h.x, h.y, half);
         const mut = 1;
-        nh.size = clamp(h.size + rng.gauss() * 0.035 * mut, 0.05, 1);
-        nh.speed = clamp(h.speed + rng.gauss() * 0.035 * mut, 0.1, 1);
-        nh.cold = clamp(h.cold + rng.gauss() * 1.3 * mut, -25, 34);
-        nh.fecund = clamp(h.fecund + rng.gauss() * 0.03 * mut, 0.1, 1.2);
-        nh.fierce = clamp(h.fierce + rng.gauss() * 0.03 * mut, 0, 1);
+        nh.size = clamp(h.size + rng.gauss() * 0.02 * mut, 0.05, 1);
+        nh.speed = clamp(h.speed + rng.gauss() * 0.02 * mut, 0.1, 1);
+        nh.cold = clamp(h.cold + rng.gauss() * 0.75 * mut, -25, 34);
+        nh.fecund = clamp(h.fecund + rng.gauss() * 0.012 * mut, 0.1, 1.2);
+        nh.fierce = clamp(h.fierce + rng.gauss() * 0.012 * mut, 0, 1);
         nh.energy = h.energy;
         const a = rng.range(0, Math.PI * 2);
         nh.tx = clamp(h.x + Math.cos(a) * 9, 1, W - 2);
@@ -453,8 +471,8 @@ function updateHerds(sim: Sim): void {
           by = ty;
         }
       }
-      if (sp.diet === 1 && h.energy < 0.6) {
-        herdsNear(sim, h.x, h.y, 12, tmpHerds);
+      if (sp.diet === 1 && h.energy < 0.85) {
+        herdsNear(sim, h.x, h.y, 22, tmpHerds);
         let bd = 1e9;
         for (const o of tmpHerds) {
           if (sim.species.get(o.sp)!.diet === 1) continue;
@@ -502,6 +520,8 @@ export function recountSpecies(sim: Sim): void {
     const sp = sim.species.get(h.sp);
     if (sp) sp.count += Math.max(0, h.n);
   }
+  // a species wholly replaced by its descendants is gone too, without a last death to mark it
+  for (const sp of sim.species.values()) if (sp.count === 0 && sp.extinct < 0 && sim.tick - sp.born > 48) sp.extinct = sim.tick;
 }
 
 export function checkExtinction(sim: Sim, sp: Species): void {
@@ -516,7 +536,7 @@ export function checkExtinction(sim: Sim, sp: Species): void {
 function maybeSpeciate(sim: Sim, h: Herd): void {
   const sp = sim.species.get(h.sp)!;
   const d = Math.abs(h.cold - sp.cold) / 7 + Math.abs(h.size - sp.size) / 0.22 + Math.abs(h.speed - sp.speed) / 0.25 + Math.abs(h.fierce - sp.fierce) / 0.3;
-  if (d < 1.7) return;
+  if (d < 2) return;
   let live = 0;
   for (const s of sim.species.values()) if (s.extinct < 0) live++;
   if (live > 40) return;
