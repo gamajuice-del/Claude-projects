@@ -253,9 +253,9 @@ function battleRound(sim: Sim, a: Army, b: Army): void {
   const wg = sim.people.get(win.general),
     lg = sim.people.get(lose.general);
   const big = win.bStart + lose.bStart;
-  if (big >= 16) {
+  if (big >= 30) {
     const destroyed = lose.soldiers.length === 0;
-    addEvent(sim, 'battle', big > 120 ? 3 : 2, `Battle of ${where}: ${wg ? 'General ' + fullName(sim, wg) + ' and ' : ''}the ${wc.name} (${win.bStart} strong) ${destroyed ? 'annihilated' : 'routed'} ${lose.bStart} ${lc.adj} troops${lg && lg.army === lose.id ? ' under ' + fullName(sim, lg) : ''}. ${win.bLoss + lose.bLoss} fell.`, [wc.id, lc.id], wg ? [wg.id] : [], -1, Math.round(win.x), Math.round(win.y));
+    addEvent(sim, 'battle', big > 150 ? 3 : 2, `Battle of ${where}: ${wg ? 'General ' + fullName(sim, wg) + ' and ' : ''}the ${wc.name} (${win.bStart} strong) ${destroyed ? 'annihilated' : 'routed'} ${lose.bStart} ${lc.adj} troops${lg && lg.army === lose.id ? ' under ' + fullName(sim, lg) : ''}. ${win.bLoss + lose.bLoss} fell.`, [wc.id, lc.id], wg ? [wg.id] : [], -1, Math.round(win.x), Math.round(win.y));
   }
   if (war) {
     war.battles++;

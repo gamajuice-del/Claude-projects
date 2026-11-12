@@ -1,0 +1,74 @@
+<div id="app">
+  <canvas id="map" aria-label="World map"></canvas>
+
+  <header id="top">
+    <div class="brand" title="Project Genesis">GENESIS</div>
+    <div class="clock">
+      <span id="date">Year 1</span>
+      <span id="season" class="chip">Spring</span>
+    </div>
+    <div id="vitals" class="vitals"></div>
+    <div id="speed" class="speed" role="group" aria-label="Simulation speed">
+      <button id="sp0" data-speed="0" title="Pause (Space)">❚❚</button>
+      <button id="sp1" data-speed="1" title="Slow (1)">▶</button>
+      <button id="sp2" data-speed="2" title="Normal (2)">▶▶</button>
+      <button id="sp3" data-speed="3" title="Fast (3)">▶▶▶</button>
+      <button id="sp4" data-speed="4" title="As fast as possible (4)">MAX</button>
+    </div>
+    <nav id="menus" class="menus">
+      <button id="btn-chronicle" data-win="chronicle">Chronicle</button>
+      <button id="btn-nations" data-win="nations">Nations</button>
+      <button id="btn-life" data-win="life">Life</button>
+      <button id="btn-stats" data-win="stats">Charts</button>
+      <select id="mapmode" title="Map mode (M)" aria-label="Map mode">
+        <option value="normal">Map: Terrain</option>
+        <option value="political">Map: Political</option>
+        <option value="biome">Map: Biomes</option>
+        <option value="temperature">Map: Temperature</option>
+        <option value="rainfall">Map: Moisture</option>
+        <option value="fertility">Map: Fertility</option>
+        <option value="resources">Map: Resources</option>
+        <option value="culture">Map: Cultures</option>
+        <option value="religion">Map: Faiths</option>
+      </select>
+      <button id="btn-world" data-win="world">World</button>
+      <button id="btn-help" data-win="help" title="Help">?</button>
+    </nav>
+  </header>
+
+  <div id="stage">
+  <aside id="tools" aria-label="God powers">
+    <div id="toolcats" class="toolcats"></div>
+    <div id="toolgrid" class="toolgrid"></div>
+    <div class="brushrow">
+      <label for="brush">Brush</label>
+      <input id="brush" type="range" min="1" max="12" value="4">
+      <span id="brushval">4</span>
+    </div>
+    <div id="toolhint" class="toolhint"></div>
+  </aside>
+
+  <aside id="inspector" hidden>
+    <div class="insp-head">
+      <div id="insp-title" class="insp-title"></div>
+      <button id="insp-close" title="Close">×</button>
+    </div>
+    <div id="insp-body" class="insp-body"></div>
+  </aside>
+
+  <div id="ticker" class="ticker" aria-live="polite"></div>
+  <canvas id="minimap" title="Minimap — click to travel"></canvas>
+
+  <section id="window" class="window" hidden>
+    <div class="win-head">
+      <div id="win-title" class="win-title"></div>
+      <button id="win-close" title="Close (Esc)">×</button>
+    </div>
+    <div id="win-body" class="win-body"></div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  </div>
+  <div id="loading" class="loading">Shaping the world…</div>
+  <input id="file" type="file" accept=".json,.gz,.genesis" hidden>
+</div>

@@ -11,7 +11,7 @@ export interface WorldOpts {
 }
 
 const RAIN_BAND: [number, number][] = [
-  [0, 0.92], [0.12, 0.82], [0.27, 0.2], [0.36, 0.24], [0.5, 0.62], [0.63, 0.66], [0.8, 0.42], [1, 0.22],
+  [0, 0.95], [0.12, 0.86], [0.26, 0.2], [0.34, 0.25], [0.48, 0.7], [0.63, 0.74], [0.8, 0.52], [1, 0.3],
 ];
 function rainBand(lat: number): number {
   for (let k = 1; k < RAIN_BAND.length; k++) {
@@ -133,7 +133,7 @@ export function generateWorld(opts: WorldOpts): World {
     for (let x = 0; x < W; x++) {
       const i = y * W + x;
       const alt = Math.max(0, w.elev[i] - SEA);
-      w.temp[i] = 29 - 44 * Math.pow(lat, 1.25) - alt * 46 + (noise2(x / 23, y / 23, seed + 901) - 0.5) * 4;
+      w.temp[i] = 30 - 41 * Math.pow(lat, 1.5) - alt * 30 + (noise2(x / 23, y / 23, seed + 901) - 0.5) * 4;
     }
   }
 
@@ -153,8 +153,8 @@ export function generateWorld(opts: WorldOpts): World {
       } else {
         const up = prev >= 0 ? Math.max(0, w.elev[i] - w.elev[prev]) : 0;
         const oro = Math.min(m, up * 5 * m);
-        w.rain[i] = clamp01(band * (0.28 + 0.9 * m) + oro * 1.6 + (noise2(x / 15, y / 15, seed + 1201) - 0.5) * 0.22);
-        m = Math.max(0.05, m * 0.986 - oro * 0.75);
+        w.rain[i] = clamp01(band * (0.42 + 0.78 * m) + oro * 1.6 + (noise2(x / 15, y / 15, seed + 1201) - 0.5) * 0.24);
+        m = Math.max(0.05, m * 0.99 - oro * 0.75);
       }
       prev = i;
     }
@@ -203,7 +203,7 @@ export function generateWorld(opts: WorldOpts): World {
     const grow = warm * clamp01((m - 0.06) / 0.5);
     w.veg[i] = clamp01(grow * (0.5 + 0.5 * w.fert[i]) * 1.1);
     const fn = fbm(x / 11, y / 11, seed + 1701, 3);
-    let fo = clamp01((m - 0.36) * 2.4) * clamp01((t + 3) / 9) * (0.45 + fn * 0.9);
+    let fo = clamp01((m - 0.36) * 2.4) * clamp01((t + 4) / 7) * (0.45 + fn * 0.9);
     if (w.elev[i] > MOUNTAIN) fo *= 0.15;
     w.forest[i] = clamp01(fo);
   }

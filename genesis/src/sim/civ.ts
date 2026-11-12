@@ -639,7 +639,8 @@ export function succession(sim: Sim, civ: Civ, cause: string, prevId: number): v
     heir = kids.find((k) => ageOf(sim, k) >= ADULT_AGE) || kids[0];
     let pretender: Person | undefined;
     if (heir) {
-      text = `${lead}${heir.sex ? 'His' : 'Her'} ${ageOf(sim, heir) < ADULT_AGE ? 'young ' : ''}${heir.sex ? 'son' : 'daughter'} ${fullName(sim, heir)} inherits the throne.`.replace(/^His|^Her/, prevGrave && prevGrave.sex === 0 ? 'Her' : 'His');
+      const whose = (prevGrave ? prevGrave.sex : prevAlive ? prevAlive.sex : 1) === 0 ? 'Her' : 'His';
+      text = `${lead}${lead ? whose : 'The late ruler’s'} ${ageOf(sim, heir) < ADULT_AGE ? 'young ' : ''}${heir.sex ? 'son' : 'daughter'} ${fullName(sim, heir)} inherits the throne.`;
       pretender = kids.find((k) => k !== heir && ageOf(sim, k) >= ADULT_AGE && k.amb > 0.68 && k.bold > 0.5);
     } else {
       // any living member of the royal house

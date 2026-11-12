@@ -965,7 +965,7 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
     const foreign = s.cultureMajor !== civ.culture ? 0.15 : 0;
     const occupied = s.occupier >= 0 ? 0.3 : s.originalCiv !== s.civ ? 0.12 : 0;
     const garrison = Math.min(0.3, ((jc[J.soldier] - away) / (pop + 1)) * 2.5);
-    const target = clamp01((0.56 - s.happyAvg) * 1.7 + (0.5 - s.loyalAvg) * 1.3 + foreign + occupied + s.gini * 0.2 + civ.exhaustion * 0.3 + (taxRate - 0.2) * 0.6 + Math.max(0, civ.settlements.length - m.admin - 1) * 0.025 - garrison - templeJoy - (civ.legitimacy - 0.5) * 0.2) * P.unrest;
+    const target = clamp01((0.56 - s.happyAvg) * 1.7 + (0.5 - s.loyalAvg) * 1.3 + foreign + occupied + s.gini * 0.2 + civ.exhaustion * 0.3 + (taxRate - 0.2) * 0.6 + Math.min(0.18, Math.max(0, civ.settlements.length - m.admin - 1) * 0.012) - (tick - s.lastRaid < 18 * TICKS_PER_YEAR ? 0.22 : 0) - garrison - templeJoy - (civ.legitimacy - 0.5) * 0.2) * P.unrest;
     s.unrest += (target - s.unrest) * 0.15;
     s.rebelHeat = s.unrest > 0.62 ? s.rebelHeat + 1 : Math.max(0, s.rebelHeat - 1);
   }

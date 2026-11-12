@@ -293,7 +293,7 @@ export function classifyBiome(w: World, c: Climate, i: number): number {
   if (w.coast[i] && rel < SEA + 0.012 && f < 0.3 && t > 2) return Biome.Beach;
   if (t < -1) return Biome.Tundra;
   if (rel > HILL && f < 0.35) return Biome.Hills;
-  if (t < 6) return f > 0.3 ? Biome.Taiga : m < 0.2 ? Biome.Steppe : Biome.Tundra;
+  if (t < 6) return f > 0.3 ? Biome.Taiga : t < 2.5 ? Biome.Tundra : m < 0.2 ? Biome.Steppe : Biome.Grassland;
   if (t < 19) {
     if (f > 0.4) return m > 0.8 && rel < SEA + 0.05 ? Biome.Swamp : Biome.Forest;
     if (m < 0.16 && v < 0.2) return Biome.Desert;

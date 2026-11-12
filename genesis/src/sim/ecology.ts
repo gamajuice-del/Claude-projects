@@ -72,7 +72,8 @@ function updateTiles(sim: Sim): void {
     let fo = w.forest[i];
     if (imp !== I_FARM && imp !== I_URBAN && imp !== I_MINE) {
       const mt = meanTemp(w, c, i);
-      let fp = clamp01((m - 0.3) * 2.3) * clamp01((mt + 4) / 8) * clamp01((40 - mt) / 6);
+      const wetness = w.rain[i] * 0.65 + m * 0.35 + (w.river[i] > 0 ? 0.12 : 0); // trees live on the climate, not on one wet year
+      let fp = clamp01((wetness - 0.3) * 2.3) * clamp01((mt + 4) / 8) * clamp01((40 - mt) / 6);
       if (w.elev[i] - w.seaLevel + SEA > MOUNTAIN) fp *= 0.2;
       if (fo < fp) {
         let nf = 0;
@@ -82,7 +83,7 @@ function updateTiles(sim: Sim): void {
         if (y < H - 1) nf += w.forest[i + W];
         fo += 0.03 * (0.3 + g) * (nf * 0.5 + fo + 0.04) * P.growth * (0.4 + 0.6 * w.fert[i]) * (imp === I_PASTURE ? 0.3 : 1);
         if (fo > fp) fo = fp;
-      } else fo -= 0.03 * (fo - fp) + (m < 0.15 ? 0.01 : 0);
+      } else fo -= 0.015 * (fo - fp) + (m < 0.12 ? 0.008 : 0);
       w.forest[i] = clamp01(fo);
     } else if (fo > 0) w.forest[i] = fo * 0.7;
     // --- soil: humus builds under plants; bare dry ground blows away; rain strips steep bare slopes ---
