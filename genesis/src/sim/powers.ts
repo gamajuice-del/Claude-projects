@@ -169,7 +169,7 @@ export function drought(sim: Sim, cx: number, cy: number, r: number): void {
     if (w.water[i] !== W_LAND) return;
     w.moist[i] *= 0.3;
     w.veg[i] *= 0.6;
-    w.rain[i] = Math.max(0.02, w.rain[i] - 0.015);
+    w.rain[i] = Math.max(0.02, w.rain[i] - 0.04);
     markDirty(sim, i);
   });
   sim.rt.fx.push({ kind: 'heat', x: cx, y: cy, r, t: sim.tick });

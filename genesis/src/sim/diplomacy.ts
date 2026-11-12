@@ -2,7 +2,7 @@
 // Wars are chosen (or avoided) by weighing motive against cost.
 import { clamp, clamp01 } from './rng';
 import { addEvent } from './history';
-import { Civ, G, GOV, RES_GOOD, Relation, Settlement, Sim, TICKS_PER_YEAR, War } from './types';
+import { Civ, G, GOV, J, RES_GOOD, Relation, Settlement, Sim, TICKS_PER_YEAR, War } from './types';
 import { dist } from './world';
 import { absorbCiv, civFullName, relationOf, removeCiv } from './civ';
 import { fullName } from './people';
@@ -65,6 +65,15 @@ export function diplomacySeasonal(sim: Sim, civ: Civ): void {
   let atWar = false;
   for (const [, r] of civ.rel) if (r.war >= 0) atWar = true;
   const myPower = warPotential(civ);
+  // land hunger: grown men and women with no land to work and no trade to ply
+  let idle = 0, grown = 0;
+  for (const sid of civ.settlements) {
+    const s = sim.settlements.get(sid);
+    if (!s) continue;
+    idle += s.jobCount[J.laborer];
+    grown += s.people.length - s.jobCount[J.child];
+  }
+  const landHunger = grown > 0 ? clamp01((idle / grown - 0.08) * 3) : 0;
   for (const [oid, r] of civ.rel) {
     const o = sim.civs.get(oid);
     if (!o || !o.alive) {
@@ -79,7 +88,7 @@ export function diplomacySeasonal(sim: Sim, civ: Civ): void {
     // --- where the relationship is heading ---
     const ocul = sim.cultures.get(o.culture)!;
     const heat = grievanceHeat(civ, oid);
-    let t = Math.min(28, r.tradeVal / 25);
+    let t = Math.min(22, r.tradeVal / 40);
     if (o.culture === civ.culture) t += 15;
     else if (ocul.parent === civ.culture || cul.parent === o.culture || (cul.parent >= 0 && cul.parent === ocul.parent)) t += 6;
     else t -= cul.insular * 12;
@@ -151,7 +160,7 @@ export function diplomacySeasonal(sim: Sim, civ: Civ): void {
       continue;
     }
     // --- war? ---
-    if (atWar || r.alliance || sim.tick < r.truceUntil || civ.rebelOf >= 0 || civ.pop < 40) continue;
+    if (atWar || r.alliance || r.tribute > 0 || sim.tick < r.truceUntil || civ.rebelOf >= 0 || civ.pop < 40) continue;
     if (!rng.chance(0.3)) continue;
     // motive
     let scarcity = 0, wantGood = -1;
@@ -175,10 +184,12 @@ export function diplomacySeasonal(sim: Sim, civ: Civ): void {
     const opportunism = (1 - o.stability) * 0.3 + (o.exhaustion > 0.3 ? 0.2 : 0);
     const income = civ.incomeLast + 1;
     const tradeDep = clamp01((r.tradeVal * 0.15) / income) * (0.6 + civ.pTrade);
-    let desire = civ.pExpand * 0.45 + civ.pMilitary * 0.3 + scarcity * 0.5 + Math.min(0.6, heat * 0.012) + zeal + opportunism + r.friction * 0.4;
-    desire -= r.score / 90 + tradeDep * 0.9 + civ.exhaustion * 1.5 + (r.tradePact ? 0.15 : 0);
+    // what the ruler is like matters: a bold, ambitious one sees openings a cautious one lets pass
+    const temper = ruler ? (ruler.amb - 0.5) * 0.5 + (ruler.bold - 0.5) * 0.3 - (ruler.comp - 0.5) * 0.2 : 0;
+    let desire = civ.pExpand * 0.45 + civ.pMilitary * 0.3 + scarcity * 0.5 + landHunger * 0.35 + Math.min(0.6, heat * 0.012) + zeal + opportunism + r.friction * 0.4 + temper;
+    desire -= r.score / 90 + tradeDep * 0.65 + civ.exhaustion * 1.5 + (r.tradePact ? 0.15 : 0);
     desire *= sim.params.aggression;
-    if (desire < 0.8) continue;
+    if (desire < 0.7) continue;
     // means: can we win, and can we pay for it?
     const theirPower = warPotential(o) * o.mods.defense + alliesPower(sim, o, civ.id);
     const ratio = (myPower + alliesPower(sim, civ, oid) * 0.6) / (theirPower + 1);
@@ -196,6 +207,7 @@ export function diplomacySeasonal(sim: Sim, civ: Civ): void {
       r.tribute = amt;
       ro.tribute = -amt;
       ro.score -= 20;
+      r.truceUntil = ro.truceUntil = sim.tick + 20 * TICKS_PER_YEAR; // protection is what the tribute buys
       addGrievance(sim, o, civ.id, 'tribute', 10, `forced to pay tribute to the ${civ.name}`);
       addEvent(sim, 'diplomacy', 3, `Under threat of invasion, the ${o.name} agreed to pay tribute to the ${civFullName(civ)}.`, [civ.id, oid], [], o.capital, -1, -1);
       continue;
@@ -207,7 +219,7 @@ export function diplomacySeasonal(sim: Sim, civ: Civ): void {
     }
     let goal = 'conquest';
     let target = np.theirs.id;
-    if (heat > 25 && heat * 0.012 > scarcity * 0.5) goal = 'revenge';
+    if (heat > 25 && heat * 0.012 > scarcity * 0.5 && heat * 0.012 > landHunger * 0.35) goal = 'revenge';
     else if (scarcity > 0.3 && wantGood >= 0) {
       goal = 'resources';
       // aim for the town that has it
@@ -225,14 +237,14 @@ export function diplomacySeasonal(sim: Sim, civ: Civ): void {
         }
       }
     } else if (zeal > 0.2) goal = 'holy';
-    declareWar(sim, civ, o, goal, target, wantGood);
+    declareWar(sim, civ, o, goal, target, wantGood, landHunger);
     atWar = true;
   }
 }
 
 const GOOD_WORD = ['grain', 'timber', 'stone', 'copper', 'iron', 'coal', 'gold', 'salt', 'oil', 'tools', 'arms', 'luxuries'];
 
-export function declareWar(sim: Sim, att: Civ, def: Civ, goal: string, target: number, good = -1): War {
+export function declareWar(sim: Sim, att: Civ, def: Civ, goal: string, target: number, good = -1, landFor = 0): War {
   let prior = 0;
   for (const w of sim.wars.values()) if ((w.att === att.id && w.def === def.id) || (w.att === def.id && w.def === att.id)) prior++;
   const ord = ['', 'Second ', 'Third ', 'Fourth ', 'Fifth ', 'Sixth '][Math.min(5, prior)];
@@ -285,7 +297,7 @@ export function declareWar(sim: Sim, att: Civ, def: Civ, goal: string, target: n
       const g = att.grievances.filter((x) => x.civ === def.id).sort((a, b) => b.mag - a.mag)[0];
       why = g ? ` They have not forgotten being ${g.text}.` : '';
     } else if (goal === 'holy') why = ' Its priests call it a holy war.';
-    else why = ts ? ` Its armies march on ${ts.name}.` : '';
+    else why = ts ? ` ${landFor > 0.4 ? 'Its landless poor need fields, and its' : 'Its'} armies march on ${ts.name}.` : '';
     const allies = war.defAllies.length ? ` ${war.defAllies.map((id) => 'The ' + sim.civs.get(id)!.name).join(' and ')} stand${war.defAllies.length === 1 ? 's' : ''} with the defenders.` : '';
     const ruler = sim.people.get(att.ruler);
     addEvent(sim, 'war', 4, `${civFullName(att)}${ruler ? ' under ' + fullName(sim, ruler) : ''} declared war on ${civFullName(def)}.${why}${allies}`, [att.id, def.id].concat(war.defAllies, war.attAllies), ruler ? [ruler.id] : [], target, ts ? ts.x : -1, ts ? ts.y : -1);

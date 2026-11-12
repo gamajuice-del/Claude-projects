@@ -180,7 +180,7 @@ export class UI {
   private cat = 'look';
   private acc = 0;
   private tickerShown = 0;
-  private chronFilter = { imp: 2, group: 'all', q: '' };
+  private chronFilter = { imp: 2, group: 'all', q: '', year: -1 };
   private techCiv = -1;
   private worldTab = 'new';
   private toastTimer = 0;
@@ -344,7 +344,7 @@ export class UI {
     } else if (p.kind === 'species') {
       for (const h of sim.herds.values()) if (h.sp === p.id) { x = h.x; y = h.y; break; }
     }
-    if (x >= 0) r.centerOn(x, y, Math.max(2.4, r.cam.tz / (window.devicePixelRatio || 1) > 2.4 ? 0 : 2.4) || undefined);
+    if (x >= 0) r.centerOn(x, y, r.cam.tz / Math.min(2, window.devicePixelRatio || 1) < 2.2 ? 2.6 : undefined);
   }
 
   private openEvent(id: number): void {
@@ -887,7 +887,8 @@ export class UI {
       case 'crown': if (p && !powers.crown(sim, p)) this.toast('That cannot be done.'); break;
       case 'follow': g.follow = !g.follow; break;
       case 'tech': if (c) { this.techCiv = c.id; this.toggleWindow('tech', true); } break;
-      case 'chron': if (c) { this.chronFilter = { imp: 1, group: 'all', q: c.name }; this.toggleWindow('chronicle', true); } break;
+      case 'chron': if (c) { this.chronFilter = { imp: 1, group: 'all', q: c.name, year: -1 }; this.toggleWindow('chronicle', true); } break;
+      case 'chron-year': this.chronFilter.year = -1; this.renderWindow(); break;
       case 'isolate': if (c) c.isolated = !c.isolated; break;
       case 'gold': if (c) { powers.giftGold(sim, c, 500); this.toast(`Gold appears in the vaults of the ${c.name}.`); } break;
       case 'war':
@@ -1002,9 +1003,23 @@ export class UI {
         return;
       }
     }
+    if (this.win === 'chronicle' && el.querySelector('#chron-time') && !keepFocus) {
+      // keep the timeline canvas and the search box alive; swap only the list and the filter buttons
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const oldF = el.querySelector('.filters'), newF = tmp.querySelector('.filters');
+      const oldL = el.querySelector('#chron-list'), newL = tmp.querySelector('#chron-list');
+      if (oldF && newF && oldL && newL && document.activeElement !== el.querySelector('#chron-q')) {
+        oldF.innerHTML = newF.innerHTML;
+        oldL.innerHTML = newL.innerHTML;
+        this.drawTimeline();
+        return;
+      }
+    }
     el.innerHTML = html;
     el.scrollTop = scroll;
     if (this.win === 'stats') this.drawCharts();
+    if (this.win === 'chronicle') this.drawTimeline();
     if (this.win === 'world' && this.worldTab === 'save') this.fillSlots();
     const sea = document.getElementById('p-sea');
     if (sea) sea.addEventListener('change', () => this.commitSea());
@@ -1030,12 +1045,81 @@ export class UI {
       if (e.imp < f.imp) continue;
       if (kinds.length && kinds.indexOf(e.kind) < 0) continue;
       if (q && e.text.toLowerCase().indexOf(q) < 0) continue;
+      if (f.year >= 0 && Math.abs(yr(e.t) - f.year) > 6) continue;
       shown++;
       out.push(`<div class="event i${e.imp}" data-ev="${e.id}"><div class="when">Year ${yr(e.t)}</div><div class="what" style="border-left-color:${EVENT_COLORS[e.kind] || '#97a4b3'}">${esc(e.text)}</div></div>`);
     }
     const impBtn = (v: number, label: string) => `<button data-act="chron-imp" data-arg="${v}" id="chron-imp-${v}" class="${f.imp === v ? 'on' : ''}">${label}</button>`;
     const grpBtn = (v: string, label: string) => `<button data-act="chron-group" data-arg="${v}" id="chron-grp-${v}" class="${f.group === v ? 'on' : ''}">${label}</button>`;
-    return `<div class="filters">${impBtn(1, 'Everything')}${impBtn(2, 'Notable')}${impBtn(3, 'Major')}${impBtn(4, 'Epochal')}<span class="muted">·</span>${grpBtn('all', 'All')}${grpBtn('war', 'War')}${grpBtn('state', 'States')}${grpBtn('nature', 'Nature')}${grpBtn('mind', 'Ideas')}${grpBtn('people', 'People')}<input id="chron-q" type="search" placeholder="Search names, places…" value="${esc(f.q)}" data-inp="chron-q"></div><div id="chron-list">${out.join('') || '<p class="muted">Nothing recorded matches.</p>'}</div><p class="note">${sim.history.length} events on record. Click one to go there.</p>`;
+    const around = f.year >= 0 ? `<button class="on" id="chron-year" data-act="chron-year">Around year ${f.year} ✕</button>` : '';
+    return `<canvas id="chron-time" class="timeline" title="Nations through time. Click a year to read what happened around it."></canvas><div class="filters">${around}${impBtn(1, 'Everything')}${impBtn(2, 'Notable')}${impBtn(3, 'Major')}${impBtn(4, 'Epochal')}<span class="muted">·</span>${grpBtn('all', 'All')}${grpBtn('war', 'War')}${grpBtn('state', 'States')}${grpBtn('nature', 'Nature')}${grpBtn('mind', 'Ideas')}${grpBtn('people', 'People')}<input id="chron-q" type="search" placeholder="Search names, places…" value="${esc(f.q)}" data-inp="chron-q"></div><div id="chron-list">${out.join('') || '<p class="muted">Nothing recorded matches.</p>'}</div><p class="note">${sim.history.length} events on record. Click one to go there.</p>`;
+  }
+
+  /** nations as bars through time, wars as red spans, epochal events as ticks; click a year to filter */
+  private drawTimeline(): void {
+    const cv = document.getElementById('chron-time') as HTMLCanvasElement | null;
+    if (!cv) return;
+    const sim = this.g.sim;
+    const now = yr(sim.tick);
+    const civs = Array.from(sim.civs.values()).filter((c) => c.peakPop >= 60 || (c.alive && c.pop >= 30)).sort((a, b) => b.peakPop - a.peakPop).slice(0, 14).sort((a, b) => a.founded - b.founded || a.id - b.id);
+    const rowH = 13, top = 12, L = 4, R = 4;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = cv.clientWidth || 600;
+    const H = top + civs.length * rowH + 14;
+    cv.style.height = H + 'px';
+    cv.width = W * dpr;
+    cv.height = H * dpr;
+    const g = cv.getContext('2d')!;
+    g.scale(dpr, dpr);
+    const X = (y: number) => L + ((y - 1) / Math.max(1, now - 1)) * (W - L - R);
+    g.font = '10px "IBM Plex Sans", sans-serif';
+    g.textBaseline = 'middle';
+    const row = new Map<number, number>();
+    civs.forEach((c, k) => {
+      row.set(c.id, k);
+      const x0 = X(yr(c.founded)), x1 = X(c.alive ? now : yr(c.ended));
+      const y = top + k * rowH;
+      g.fillStyle = civCss(c.color, c.alive ? 0.85 : 0.45);
+      g.fillRect(x0, y + 1, Math.max(2, x1 - x0), rowH - 3);
+      if (x1 - x0 > g.measureText(c.name).width + 8) {
+        g.fillStyle = '#0f141b';
+        g.fillText(c.name, x0 + 4, y + rowH / 2);
+      }
+    });
+    // wars: a red span on both belligerents' rows
+    g.fillStyle = 'rgba(239,107,94,0.95)';
+    for (const w of sim.wars.values()) {
+      const x0 = X(yr(w.start)), x1 = X(w.end >= 0 ? yr(w.end) : now);
+      for (const id of [w.att, w.def]) {
+        const k = row.get(id);
+        if (k !== undefined) g.fillRect(x0, top + k * rowH + rowH - 4, Math.max(2, x1 - x0), 2);
+      }
+    }
+    // epochal events along the top
+    for (const e of sim.history) {
+      if (e.imp < 4) continue;
+      g.fillStyle = EVENT_COLORS[e.kind] || '#97a4b3';
+      g.fillRect(X(yr(e.t)) - 1, 2, 2, 8);
+    }
+    // axis
+    g.fillStyle = '#97a4b3';
+    g.textBaseline = 'alphabetic';
+    const step = now > 1200 ? 200 : now > 500 ? 100 : now > 200 ? 50 : now > 80 ? 20 : 10;
+    for (let y = step; y < now; y += step) {
+      g.fillRect(X(y), top, 1, civs.length * rowH);
+      g.textAlign = 'center';
+      g.fillText(String(y), X(y), H - 3);
+    }
+    if (this.chronFilter.year >= 0) {
+      g.fillStyle = 'rgba(242,179,61,0.25)';
+      g.fillRect(X(this.chronFilter.year - 6), 0, Math.max(3, X(this.chronFilter.year + 6) - X(this.chronFilter.year - 6)), H - 12);
+    }
+    cv.onclick = (ev) => {
+      const b = cv.getBoundingClientRect();
+      const year = Math.round(1 + ((ev.clientX - b.left - L) / (b.width - L - R)) * (now - 1));
+      this.chronFilter.year = Math.max(1, Math.min(now, year));
+      this.renderWindow();
+    };
   }
 
   private nationsHtml(): string {

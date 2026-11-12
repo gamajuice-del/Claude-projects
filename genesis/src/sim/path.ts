@@ -40,7 +40,7 @@ export function findPath(sim: Sim, from: number, to: number, sea: boolean, maxNo
   prev[from] = -1;
   heap.push(0, from);
   let nodes = 0;
-  const hmin = sea ? 1 : 0.15;
+  const hmin = sea ? 1 : 0.5; // optimistic land cost per tile; keeps long searches focused
   while (heap.size) {
     const i = heap.pop();
     if (i === to) break;

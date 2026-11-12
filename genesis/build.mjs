@@ -19,6 +19,8 @@ if (test) {
   const fragment = `${head}\n${body}\n<script>\n${js}\n</script>\n`;
   // artifact.html: page fragment for hosted publishing. index.html: the same game as a standalone file.
   writeFileSync('dist/artifact.html', fragment);
-  writeFileSync('dist/index.html', `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n${head}\n</head>\n<body>\n${body}\n<script>\n${js}\n</script>\n</body>\n</html>\n`);
+  // standalone page: supply what the hosting skeleton otherwise provides (safe-area padding on the root)
+  const standalone = '<style>html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}</style>';
+  writeFileSync('dist/index.html', `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n${head}\n${standalone}\n</head>\n<body>\n${body}\n<script>\n${js}\n</script>\n</body>\n</html>\n`);
   console.log(`built dist/index.html (${(js.length / 1024).toFixed(0)} KB js)`);
 }

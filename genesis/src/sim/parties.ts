@@ -27,7 +27,7 @@ export function createParty(sim: Sim, kind: number, civ: number, path: number[],
 export function travelPath(sim: Sim, from: number, to: number, seaCap: boolean, portTile: number): number[] | null {
   const w = sim.world;
   if (w.landmass[from] === w.landmass[to]) {
-    const p = findPath(sim, from, to, false, 12000);
+    const p = findPath(sim, from, to, false, w.n);
     if (p) return p;
   }
   if (!seaCap || portTile < 0) return null;
@@ -35,7 +35,7 @@ export function travelPath(sim: Sim, from: number, to: number, seaCap: boolean, 
     ty = (to / w.w) | 0;
   const dest = findPortTile(sim, tx, ty, 6);
   if (dest < 0) return null;
-  const seaPath = findPath(sim, portTile, dest, true, 40000);
+  const seaPath = findPath(sim, portTile, dest, true, w.n);
   if (!seaPath) return null;
   const land = landingNear(sim, dest);
   let tail: number[] | null = [to];

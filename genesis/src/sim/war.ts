@@ -310,7 +310,7 @@ function setPath(sim: Sim, a: Army, toTile: number): boolean {
   }
   const civ = sim.civs.get(a.civ)!;
   let path: number[] | null = null;
-  if (w.water[from] === W_LAND && w.landmass[from] === w.landmass[toTile]) path = findPath(sim, from, toTile, false, 14000);
+  if (w.water[from] === W_LAND && w.landmass[from] === w.landmass[toTile]) path = findPath(sim, from, toTile, false, w.n);
   if (!path && civ.mods.seaCap > 0) {
     if (w.water[from] !== W_LAND) path = travelPath(sim, from, toTile, true, from);
     else {
@@ -327,7 +327,7 @@ function setPath(sim: Sim, a: Army, toTile: number): boolean {
         }
       }
       if (port) {
-        const leg1 = port.tile === from ? [from] : findPath(sim, from, port.tile, false, 9000);
+        const leg1 = port.tile === from ? [from] : findPath(sim, from, port.tile, false, w.n);
         const leg2 = travelPath(sim, port.tile, toTile, true, port.portTile);
         if (leg1 && leg2) path = leg1.concat(leg2.slice(1));
       }
@@ -777,32 +777,34 @@ function assignObjectives(sim: Sim, civ: Civ, enemies: Civ[]): void {
       }
       continue;
     }
-    // offensive: pick the most valuable reachable target
-    let best: Settlement | null = null,
-      bs = 0;
+    // offensive: the most valuable target the army can actually get to
+    const cands: { s: Settlement; val: number }[] = [];
     const war = sim.wars.get(a.war);
     for (const e of enemies) {
       for (const sid of e.settlements) {
         const s = sim.settlements.get(sid);
         if (!s || !s.alive) continue;
         const d = dist(a.x, a.y, s.x, s.y);
-        if (d > 70 && civ.mods.seaCap <= 0) continue;
         let val = 1 + s.people.length / 150 + (s.id === e.capital ? 1.5 : 0) + (war && war.target === s.id ? 2 : 0);
         val /= 12 + d;
         val /= 1 + s.bld[B.walls] * 0.3;
         if (s.siege >= 0 && s.siege !== a.id) val *= 1.3; // reinforce a siege
-        if (val > bs) {
-          bs = val;
-          best = s;
-        }
+        cands.push({ s, val });
       }
     }
-    if (best) {
-      if (setPath(sim, a, best.tile)) {
+    cands.sort((p, q) => q.val - p.val || p.s.id - q.s.id);
+    let marched = false;
+    for (let k = 0; k < cands.length && k < 3; k++) {
+      if (setPath(sim, a, cands[k].s.tile)) {
         a.goal = 1;
-        a.target = best.id;
-      } else a.wait = 12;
-    } else if (a.goal !== 2) {
+        a.target = cands[k].s.id;
+        marched = true;
+        break;
+      }
+    }
+    if (marched) continue;
+    if (cands.length > 0) a.wait = 24; // no way through for now
+    if (a.goal !== 2) {
       const home = sim.settlements.get(a.home);
       if (home) {
         a.goal = 2;

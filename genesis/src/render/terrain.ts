@@ -68,7 +68,7 @@ export class TerrainLayer {
 
   markAll(): void {
     this.dirty.fill(1);
-    if (this.sweeping) this.pendingBack.fill(1);
+    if (this.sweeping) this.touched.fill(1);
   }
 
   markTile(i: number): void {
@@ -78,10 +78,7 @@ export class TerrainLayer {
     const cx = (x / CHUNK) | 0,
       cy = (y / CHUNK) | 0;
     this.dirty[cy * this.cols + cx] = 1;
-    if (this.sweeping) {
-      // the off-screen set must hear about it too; neighbours are caught by the next sweep
-      this.pendingBack[cy * this.cols + cx] = 1;
-    }
+    if (this.sweeping) this.touched[cy * this.cols + cx] = 1;
     const lx = x % CHUNK,
       ly = y % CHUNK;
     if (lx === 0 && cx > 0) this.dirty[cy * this.cols + cx - 1] = 1;
@@ -99,6 +96,7 @@ export class TerrainLayer {
   private back: HTMLCanvasElement[] = [];
   private backCtx: CanvasRenderingContext2D[] = [];
   private pendingBack: Uint8Array = new Uint8Array(0);
+  private touched: Uint8Array = new Uint8Array(0);
   private sweeping = false;
   private sweepTick = 0;
   private sweepMean = false;
@@ -118,20 +116,23 @@ export class TerrainLayer {
         this.backCtx.push(c.getContext('2d')!);
       }
       this.pendingBack = new Uint8Array(n);
+      this.touched = new Uint8Array(n);
     }
-    // 1. things that changed on the ground: straight to the visible set
-    for (let c = 0; c < n; c++) {
+    // 1. things that changed on the ground go straight to the visible set — but may use only part of
+    //    the frame's budget, so a busy world can never starve the seasonal sweep below
+    const share = this.sweeping ? budgetMs * 0.4 : budgetMs * 0.7;
+    let over = false;
+    for (let c = 0; c < n && !over; c++) {
       if (this.dirty[c] && visible(c)) {
         this.renderChunk(c);
-        if (performance.now() - t0 > budgetMs) return;
+        over = performance.now() - t0 > share;
       }
     }
-    let off = 0;
-    for (let c = 0; c < n && off < 3; c++) {
+    for (let c = 0, off = 0; c < n && off < 2 && !over; c++) {
       if (this.dirty[c]) {
         this.renderChunk(c);
         off++;
-        if (performance.now() - t0 > budgetMs) return;
+        over = performance.now() - t0 > share;
       }
     }
     // 2. the turning of the seasons: an off-screen sweep, swapped in whole
@@ -145,6 +146,7 @@ export class TerrainLayer {
         this.sweepTick = tick;
         this.sweepMean = fast;
         this.pendingBack.fill(1);
+        this.touched.fill(0);
       }
     }
     if (!this.sweeping) return;
@@ -167,12 +169,9 @@ export class TerrainLayer {
       this.useMean = this.sweepMean;
       this.sweeping = false;
       this.lastSweep = performance.now();
+      // chunks that changed while the sweep was under way were painted before the change: redo them
+      for (let c = 0; c < n; c++) this.dirty[c] = this.touched[c];
     }
-  }
-
-  private tileBase(i: number, out: Float32Array, k: number): void {
-    // (unused placeholder to keep hidden-class shape stable)
-    void i; void out; void k;
   }
 
   renderChunk(c: number, toBack = false): void {
@@ -206,8 +205,8 @@ export class TerrainLayer {
         const x = cx0 + tx - 1;
         const k = ty * 34 + tx;
         if (x < 0 || y < 0 || x >= W || y >= H) {
-          tw[k] = 2;
-          tr[k] = 18; tg[k] = 52; tb[k] = 104;
+          tw[k] = 1;
+          tr[k] = 20; tg[k] = 62; tb[k] = 122;
           continue;
         }
         const i = y * W + x;
@@ -319,7 +318,7 @@ export class TerrainLayer {
           if (sum < 0.985) { r = r * 0.55 + 222 * 0.45; g = g * 0.55 + 206 * 0.45; b = b * 0.55 + 160 * 0.45; }
         } else {
           // water lets the animated sea show through; foam at the shore
-          alpha = kind === 2 ? 150 : 168;
+          alpha = 168;
           if (sum < 0.985 && kind === 1) {
             if (sum < 0.8 || (n & 3) === 0) { r = 226; g = 240; b = 244; alpha = 210; }
             else { r += 26; g += 30; b += 22; alpha = 190; }
@@ -380,7 +379,14 @@ export class TerrainLayer {
               fy = ((f / W) | 0) - y;
             const th = w.river[i] > 110 ? 3 : w.river[i] > 45 ? 2 : 1;
             const col = T < -6 ? pack(206, 226, 238) : RIVER;
-            line(bx + 4, by + 4, bx + 4 + fx * TILE, by + 4 + fy * TILE, col, th);
+            const fX = x + fx,
+              fY = y + fy;
+            const toWater = w.water[f] !== W_LAND;
+            const jx = (ih(x * 5 + 1, y * 3 + 2) % 5) - 2,
+              jy = (ih(x * 3 + 7, y * 5 + 1) % 5) - 2;
+            const kx = toWater ? 0 : (ih(fX * 5 + 1, fY * 3 + 2) % 5) - 2,
+              ky = toWater ? 0 : (ih(fX * 3 + 7, fY * 5 + 1) % 5) - 2;
+            line(bx + 4 + jx, by + 4 + jy, bx + 4 + fx * TILE + kx, by + 4 + fy * TILE + ky, col, th);
             if (th > 1 && (h1 & 3) === 0) set(bx + 3 + (h2 & 1), by + 3, RIVER_HI);
           }
         }
@@ -597,7 +603,7 @@ export class TerrainLayer {
     const center = i === s.tile;
     const dist2 = (x - s.x) * (x - s.x) + (y - s.y) * (y - s.y);
     // ground
-    const ground = snowy ? pack(222, 226, 232) : era < 2 ? pack(152, 130, 98) : era < 5 ? pack(146, 140, 130) : pack(96, 98, 104);
+    const ground = snowy ? pack(222, 226, 232) : era < 2 ? pack(170, 148, 112) : era < 5 ? pack(164, 156, 142) : pack(102, 104, 110);
     const ground2 = shade(ground, 0.92);
     for (let py = 0; py < TILE; py++) for (let px = 0; px < TILE; px++) set(bx + px, by + py, ih(x * 8 + px, y * 8 + py) & 3 ? ground : ground2);
     const ruined = s.damage > 0.25 && ((h1 + h2) & 7) < s.damage * 8;
@@ -682,14 +688,20 @@ export class TerrainLayer {
         for (let r = 0; r < 3; r++) for (let cx = 0; cx < 6; cx++) set(bx + 1 + cx, by + 7 - r, r === 2 ? pack(84, 78, 76) : wl);
         set(bx + 1, by + 4, banner); set(bx + 6, by + 4, banner);
       } else {
-        // ordinary houses: denser and taller toward the middle and in later ages
-        const n = era === 0 ? 2 : 3 + (tall > 0 ? 1 : 0);
-        const baseH = era === 0 ? 2 : era < 3 ? 3 : era < 5 ? 3 + (tall > 1 ? 1 : 0) : 3 + tall + (era >= 6 ? 1 + (h2 & 1) : 0);
-        const wdt = era >= 6 ? 3 : era === 0 ? 3 : 2 + (h1 & 1);
-        if (n >= 1) house(bx + (h1 & 1), by + 3 + ((h1 >> 1) & 1), wdt, Math.min(baseH, 4), h1);
-        if (n >= 2) house(bx + 4 + ((h2 >> 2) & 1), by + 4 + ((h1 >> 3) & 1), wdt, Math.min(baseH, 5), h2);
-        if (n >= 3) house(bx + 1 + ((h2 >> 4) & 1), by + 7, wdt, baseH, h1 >> 2);
-        if (n >= 4) house(bx + 5, by + 7, 3, baseH + 1, h2 >> 3);
+        // ordinary houses: four plots to a tile with lanes between; taller toward the middle and in later ages
+        const hgt0 = era === 0 ? 2 : era < 3 ? 3 : era < 5 ? 3 + (tall > 1 ? 1 : 0) : era === 5 ? 3 + (tall > 0 ? 1 : 0) : 4 + tall;
+        for (let k = 0; k < 4; k++) {
+          const hk = ih(x * 4 + k * 7 + 1, y * 4 + k * 3 + 2);
+          if (era === 0 && (k === 1 || k === 2)) continue; // a camp is mostly open ground
+          const px = bx + (k & 1) * 4,
+            py = by + 3 + (k >> 1) * 4;
+          if ((hk & 7) === 0 && tall === 0) {
+            // a yard: a garden bed or a tree
+            if (!snowy) { set(px + 1, py - 1, pack(96, 150, 70)); set(px + 2, py, pack(74, 128, 58)); }
+            continue;
+          }
+          house(px, py, 3, hgt0 + (era >= 6 ? hk & 1 : 0), hk);
+        }
       }
     }
     // town walls along the outer edge

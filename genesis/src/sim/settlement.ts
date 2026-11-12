@@ -143,10 +143,12 @@ export function refreshLand(sim: Sim, s: Settlement): void {
   let farmable = 0, forest = 0, pasture = 0;
   const canMine = civ.mods.mineYield >= 1;
   s.mines.length = 0;
+  forDisc(w, s.x, s.y, s.radius + 3, (i) => {
+    if (w.water[i] === W_LAND && w.forest[i] > 0.15 && (w.owner[i] < 0 || w.owner[i] === s.id)) forest++;
+  });
   for (const i of s.tiles) {
     if (!s.river && w.river[i] > 0) s.river = true;
     const imp = w.imp[i];
-    if (w.forest[i] > 0.15) forest++;
     if (imp === I_NONE || imp === I_PASTURE || imp === I_CAMP) {
       if (suitableFarm(sim, i)) farmable++;
       pasture += w.veg[i] * 5;
@@ -413,19 +415,20 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
     for (const i of s.farms) {
       if (w.flood[i] > 0 || w.fire[i] > 0) continue;
       let gM = clamp01(w.moist[i] / 0.42);
-      if (irrig || (m.irrigate && w.river[i] > 0)) gM = Math.max(gM, 0.85);
+      // canals carry river water to the fields — less of it in a drought, none where the sky gives nothing at all
+      if (irrig || (m.irrigate && w.river[i] > 0)) gM = Math.max(gM, Math.min(0.85, 0.35 + anomaly * 0.5) * clamp01(w.rain[i] * 10));
       sumY += w.fert[i] * gM;
       if (gT > 0.2) w.fert[i] = Math.max(0.05, w.fert[i] - deplete);
     }
     const laborFrac = Math.min(1, jc[J.farmer] / (s.farms.length * effLabor + 1e-6));
     const millF = 1 + Math.min(2, s.bld[B.mill]) * 0.08;
-    const food = sumY * gT * Y0 * laborFrac * m.farmYield * toolF * (0.75 + 0.5 * avgSk(J.farmer)) * (besieged ? 0.3 : 1) * dmgF * millF;
+    const food = sumY * gT * Y0 * laborFrac * m.farmYield * toolF * (0.75 + 0.5 * avgSk(J.farmer)) * (besieged ? 0.12 : 1) * dmgF * millF; // only the gardens inside the lines
     prod[G.food] += food;
     prodVal[J.farmer] = food * price[G.food];
     // land use follows labour
     const capLabor = s.farms.length * effLabor;
     if (!besieged) {
-      if (jc[J.farmer] > capLabor * 0.92 || s.farms.length === 0) {
+      if ((jc[J.farmer] > capLabor * 0.92 || s.farms.length === 0) && s.farmable > 0) {
         if (addFarm(sim, s) && jc[J.farmer] > capLabor + 2) addFarm(sim, s);
       } else if (jc[J.farmer] < capLabor * 0.55 && s.farms.length > 2 && rng.chance(0.3)) dropFarm(sim, s);
     }
@@ -437,7 +440,7 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
     forDisc(w, s.x, s.y, range, (i) => {
       if (w.water[i] !== W_LAND) total += w.veg[i] * 40;
     });
-    const want = jc[J.fisher] * 2.7 * m.fishYield * toolF * (0.75 + 0.5 * avgSk(J.fisher)) * (1 + s.bld[B.port] * 0.12) * (T < -8 ? 0.4 : 1);
+    const want = jc[J.fisher] * 2.7 * m.fishYield * toolF * (0.75 + 0.5 * avgSk(J.fisher)) * (1 + s.bld[B.port] * 0.12) * (T < -8 ? 0.4 : 1) * (besieged ? 0.25 : 1);
     const got = Math.min(want, total * 0.14);
     if (got > 0 && total > 0) {
       const f = 1 - got / total;
@@ -499,24 +502,26 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
     }
   }
   // ------------------------------------------------------------- woodcutting
-  if (jc[J.woodcutter] > 0 && s.tiles.length > 0) {
+  if (jc[J.woodcutter] > 0) {
     let want = jc[J.woodcutter] * 2.6 * m.woodYield * toolF * (besieged ? 0.2 : 1);
     let got = 0;
-    const nT = s.tiles.length;
-    const start = (tick * 31 + s.id * 17) % nT;
-    for (let k = 0; k < nT && want > 0.01; k += 3) {
-      const i = s.tiles[(start + k) % nT];
+    const turn = month % 3;
+    forDisc(w, s.x, s.y, s.radius + 3, (i) => {
+      if (want <= 0.01 || w.water[i] !== W_LAND) return;
+      const o = w.owner[i];
+      if (o >= 0 && o !== s.id) return; // not from a neighbour's woods
+      if (((i % w.w) * 7 + ((i / w.w) | 0) * 13) % 3 !== turn) return; // fell in rotation, not all at once
       const f = w.forest[i];
-      if (f < 0.12) continue;
-      const take = Math.min(want, (f - 0.05) * 400, 12);
+      if (f < 0.12) return;
+      const take = Math.min(want, (f - 0.05) * 400, 10);
       w.forest[i] = f - take / 400;
       got += take;
       want -= take;
-      if (w.imp[i] === I_NONE && rng.chance(0.2)) {
+      if (w.imp[i] === I_NONE && o === s.id && rng.chance(0.2)) {
         w.imp[i] = I_CAMP;
         markDirty(sim, i);
       }
-    }
+    });
     prod[G.wood] += got;
     prodVal[J.woodcutter] = got * price[G.wood];
   }
@@ -594,7 +599,7 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
     let val = 0;
     // tools
     let nTools = (base * wT) / tw * 1.2;
-    nTools = Math.min(nTools, stock[G.wood] / 0.4);
+    nTools = Math.min(nTools, stock[G.wood] / 0.25 + 0.3);
     if (nTools > 0.01) {
       const [mg, q] = metal();
       let useQ = 1;
@@ -603,14 +608,14 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
         stock[mg] -= mm;
         useQ = 1 + (q - 1) * (mm / (nTools * 0.3));
       }
-      stock[G.wood] -= nTools * 0.4;
+      stock[G.wood] = Math.max(0, stock[G.wood] - nTools * 0.25);
       s.toolQ = (s.toolQ * stock[G.tools] + useQ * nTools) / (stock[G.tools] + nTools + 1e-6);
       prod[G.tools] += nTools;
       val += nTools * price[G.tools];
     }
     // weapons
     let nWeap = (base * wW) / tw * 0.8;
-    nWeap = Math.min(nWeap, stock[G.wood] / 0.3);
+    nWeap = Math.min(nWeap, stock[G.wood] / 0.2 + 0.3);
     if (nWeap > 0.01) {
       const [mg, q] = metal();
       let useQ = 1;
@@ -619,16 +624,18 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
         stock[mg] -= mm;
         useQ = 1 + (Math.max(q, m.weaponQ) - 1) * (mm / (nWeap * 0.5));
       }
-      stock[G.wood] -= nWeap * 0.3;
+      stock[G.wood] = Math.max(0, stock[G.wood] - nWeap * 0.2);
       s.weaponQ = (s.weaponQ * stock[G.weapons] + useQ * nWeap) / (stock[G.weapons] + nWeap + 1e-6);
       prod[G.weapons] += nWeap;
       val += nWeap * price[G.weapons];
     }
     // wares
+    // wares: cloth, pottery, leather need no timber; furniture and carts do, so wood lifts output
     let nWares = (base * wL) / tw * 1.5;
-    nWares = Math.min(nWares, stock[G.wood] / 0.25 + 0.5);
+    const woodFor = Math.min(1, stock[G.wood] / (nWares * 0.2 + 0.01));
+    nWares *= 0.55 + 0.45 * woodFor;
     if (nWares > 0.01) {
-      stock[G.wood] = Math.max(0, stock[G.wood] - nWares * 0.25);
+      stock[G.wood] = Math.max(0, stock[G.wood] - nWares * 0.2 * woodFor);
       prod[G.wares] += nWares;
       val += nWares * price[G.wares];
     }
@@ -636,7 +643,7 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
     s.demand[G.copper] = s.demand[G.copper] * 0.8 + (civ.tech[TK.bronze] === 1 && civ.tech[TK.ironworking] !== 1 ? (nTools * 0.3 + nWeap * 0.5) * 0.2 : 0);
     s.demand[G.iron] = s.demand[G.iron] * 0.8 + (civ.tech[TK.ironworking] === 1 ? (nTools * 0.3 + nWeap * 0.5) * 0.2 : 0);
   }
-  for (let g = 0; g < NG; g++) stock[g] += prod[g];
+  for (let g = 0; g < NG; g++) if (g !== G.gold) stock[g] += prod[g]; // gold goes straight to the mint
   // ------------------------------------------------------------- research
   {
     let rp = 0;
@@ -668,6 +675,12 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
   slots.fill(0);
   const hasFishing = civ.tech[TK.fishing] === 1;
   slots[J.farmer] = hasAgri ? Math.floor((s.farms.length + s.farmable) * effLabor + 0.5) - jc[J.farmer] : 0;
+  // When the granaries are full and grain is nearly worthless, nobody breaks new ground and some
+  // farmers drift to other work; fields they leave go back to grass and woodland.
+  const foodCap = pop * (5 + s.bld[B.granary] * 4) * m.storage + 40;
+  const glut = stock[G.food] > foodCap * 0.85 && price[G.food] < GOOD_BASE[G.food] * 0.6;
+  let shedFarm = glut ? Math.ceil(jc[J.farmer] * 0.05) : 0;
+  if (glut) slots[J.farmer] = Math.min(slots[J.farmer], 0);
   slots[J.fisher] = s.coastal ? Math.floor(s.waterTiles * (hasFishing ? 0.3 : 0.1)) - jc[J.fisher] : 0;
   slots[J.hunter] = Math.floor((s.wildCap * 0.3) / 2.1) + 2 - jc[J.hunter];
   slots[J.herder] = civ.tech[TK.husbandry] === 1 ? Math.floor(s.pastureCap / 14) + 1 - jc[J.herder] : 0;
@@ -825,6 +838,9 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
       if (job === J.soldier && discharge > 0 && p.title === TITLE.none) {
         discharge--;
         setJob(sim, p, s, J.laborer, lifeCtx);
+      } else if (job === J.farmer && shedFarm > 0 && rng.chance(0.2)) {
+        shedFarm--;
+        setJob(sim, p, s, J.laborer, lifeCtx);
       }
       const inc = wage[p.job] * (0.7 + 0.6 * jobSkill(p, p.job)) * (age > 62 ? 0.7 : 1);
       const tax = inc * taxRate;
@@ -908,8 +924,7 @@ export function settlementMonthly(sim: Sim, s: Settlement): void {
   // ------------------------------------------------------------- stores: spoilage and limits
   const granary = s.bld[B.granary];
   stock[G.food] *= 1 - (0.04 / m.storage) * (saltSat > 0.5 ? 0.6 : 1) / (1 + granary * 0.6);
-  const maxFood = pop * (9 + granary * 9) * m.storage + 40;
-  if (stock[G.food] > maxFood) stock[G.food] = maxFood;
+  if (stock[G.food] > foodCap) stock[G.food] = foodCap;
   stock[G.tools] = Math.max(0, stock[G.tools] - workers * 0.012);
   stock[G.weapons] = Math.max(0, stock[G.weapons] - jc[J.soldier] * 0.01);
   for (let g = 1; g < NG; g++) if (stock[g] > 4000 + pop * 6) stock[g] = 4000 + pop * 6;

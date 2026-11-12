@@ -1,5 +1,5 @@
 // World helpers: tile math, water/hydrology recomputation, seasonal climate sampling, biome classification.
-import { clamp, clamp01, noise3 } from './rng';
+import { clamp, clamp01, hash2, noise3 } from './rng';
 import { Biome, Climate, Sim, TICKS_PER_YEAR, W_LAKE, W_LAND, W_OCEAN, World } from './types';
 
 export const SEA = 0.4;
@@ -186,8 +186,11 @@ export function recomputeHydrology(w: World, makeLakes: boolean): void {
   const filled = new Float32Array(n);
   const done = new Uint8Array(n);
   const heap = new MinHeap();
+  const base = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    filled[i] = elev[i];
+    // a whisper of roughness so drainage across flat country wanders instead of running ruler-straight
+    base[i] = water[i] === W_LAND ? elev[i] + hash2(i % W, (i / W) | 0, w.seed + 77) * 0.004 : elev[i];
+    filled[i] = base[i];
     flow[i] = -1;
     river[i] = 0;
     if (water[i] === W_OCEAN) {
@@ -223,7 +226,7 @@ export function recomputeHydrology(w: World, makeLakes: boolean): void {
   }
   if (makeLakes) {
     for (let i = 0; i < n; i++) {
-      if (water[i] === W_LAND && filled[i] - elev[i] > 0.012) water[i] = W_LAKE;
+      if (water[i] === W_LAND && filled[i] - base[i] > 0.012) water[i] = W_LAKE;
     }
   }
   // accumulate in reverse flood order (highest first)

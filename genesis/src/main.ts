@@ -32,8 +32,8 @@ class GameImpl implements Game {
     this.renderer.minimap = document.getElementById('minimap') as HTMLCanvasElement;
   }
 
-  start(opts: SimOpts): void {
-    this.sim = createSim(opts);
+  start(opts: SimOpts, restored: Sim | null = null): void {
+    this.sim = restored || createSim(opts);
     this.renderer.setSim(this.sim);
     this.ui = new UI(this);
     this.bindInput();
@@ -356,13 +356,39 @@ class GameImpl implements Game {
 
 function boot(): void {
   const game = new GameImpl();
-  (window as unknown as { genesis: GameImpl }).genesis = game;
-  (window as unknown as { genesis_serialize: () => string }).genesis_serialize = () => serialize(game.sim);
-  // let the "shaping the world" message paint before the heavy work
-  setTimeout(() => {
-    const seed = Math.floor(Math.random() * 99999) + 1;
-    game.start({ seed, w: 256, h: 160, land: 0.36, tribes: 8, popCap: 12000 });
-  }, 30);
+  (window as unknown as { genesis: GameImpl }).genesis = game; // handle for the browser tests and the curious
+  // When the page is hosted somewhere that can hand state across a reload, keep the world.
+  const hot = (window as unknown as { claude?: { hot?: { snapshot?: (f: () => unknown) => void; ready?: (f: (d: unknown) => void) => void; data?: unknown } } }).claude?.hot;
+  try {
+    hot?.snapshot?.(() => {
+      try {
+        const world = serialize(game.sim);
+        return world.length < 14e6 ? { world } : { seed: game.sim.world.seed };
+      } catch {
+        return {};
+      }
+    });
+  } catch {
+    /* no host */
+  }
+  const begin = (data: unknown) => {
+    const d = (data || {}) as { world?: string; seed?: number };
+    // let the "shaping the world" message paint before the heavy work
+    setTimeout(() => {
+      let restored: Sim | null = null;
+      if (d.world) {
+        try {
+          restored = deserialize(d.world);
+        } catch {
+          restored = null;
+        }
+      }
+      const seed = d.seed || Math.floor(Math.random() * 99999) + 1;
+      game.start({ seed, w: 256, h: 160, land: 0.36, tribes: 8, popCap: 12000 }, restored);
+    }, 30);
+  };
+  if (hot?.ready) hot.ready(begin);
+  else begin(hot?.data ?? {});
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
 else boot();

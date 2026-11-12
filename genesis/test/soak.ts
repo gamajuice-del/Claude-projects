@@ -4,20 +4,34 @@ import { TICKS_PER_YEAR, G, J } from '../src/sim/types';
 import { knownCount, ERA_NAMES } from '../src/sim/tech';
 import { landFraction } from '../src/sim/worldgen';
 import { civFullName } from '../src/sim/civ';
+import { serialize, deserialize } from '../src/sim/save';
+import { writeFileSync, readFileSync } from 'node:fs';
 
 declare const process: { argv: string[] };
-const seed = Number(process.argv[2] || 1234);
-const years = Number(process.argv[3] || 300);
-const W = Number(process.argv[4] || 256);
-const H = Number(process.argv[5] || 160);
-const quiet = process.argv.includes('--quiet');
+// positional: seed years width height.  flags: --quiet, --save <file>, --load <file>
+const flags = new Map<string, string>();
+const pos: string[] = [];
+for (let k = 2; k < process.argv.length; k++) {
+  const a = process.argv[k];
+  if (a === '--save' || a === '--load') flags.set(a, process.argv[++k]);
+  else if (a.startsWith('--')) flags.set(a, '1');
+  else pos.push(a);
+}
+const seed = Number(pos[0] || 1234);
+const years = Number(pos[1] || 300);
+const W = Number(pos[2] || 256);
+const H = Number(pos[3] || 160);
+const quiet = flags.has('--quiet');
 const t0 = Date.now();
-const sim = createSim({ seed, w: W, h: H, land: 0.36, tribes: 8, popCap: 12000 });
+const saveTo = flags.get('--save') || '';
+const loadFrom = flags.get('--load') || '';
+const sim = loadFrom ? deserialize(readFileSync(loadFrom, 'utf8')) : createSim({ seed, w: W, h: H, land: 0.36, tribes: 8, popCap: 12000 });
 console.log(`world ${W}x${H} seed ${seed}: land ${(landFraction(sim.world) * 100).toFixed(0)}%, gen ${Date.now() - t0}ms, tribes ${sim.civs.size}, herds ${sim.herds.size}, people ${sim.people.size}`);
 let last = Date.now();
-for (let y = 1; y <= years; y++) {
+const y0 = Math.floor(sim.tick / TICKS_PER_YEAR);
+for (let y = y0 + 1; y <= y0 + years; y++) {
   for (let k = 0; k < TICKS_PER_YEAR; k++) tick(sim);
-  if (y % 25 === 0 || y === years) {
+  if (y % 25 === 0 || y === y0 + years) {
     let civs = 0, maxTech = 0, era = 0, soldiers = 0;
     for (const c of sim.civs.values()) if (c.alive) { civs++; maxTech = Math.max(maxTech, knownCount(c)); era = Math.max(era, c.era); soldiers += c.soldiers; }
     let fed = 0, n = 0, food = 0, farms = 0, urban = 0;
@@ -42,4 +56,5 @@ if (!quiet) {
   for (const e of sim.history) kinds.set(e.kind, (kinds.get(e.kind) || 0) + 1);
   console.log('\nevent kinds:', Array.from(kinds).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' '));
 }
+if (saveTo) writeFileSync(saveTo, serialize(sim));
 console.log(`total ${(Date.now() - t0) / 1000}s, born ${sim.totalBorn}, died ${sim.totalDied}`);

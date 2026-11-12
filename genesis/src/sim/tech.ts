@@ -36,7 +36,7 @@ export interface TechDef {
 }
 
 export const ERA_NAMES = ['Stone Age', 'Bronze Age', 'Iron Age', 'Medieval', 'Renaissance', 'Industrial', 'Modern', 'Atomic'];
-const TIER_COST = [0, 40, 150, 600, 2000, 6000, 15000, 32000, 62000];
+const TIER_COST = [0, 40, 150, 600, 2400, 7500, 19000, 42000, 80000];
 
 const defs: Omit<TechDef, 'id'>[] = [
   // tier 0 — everyone starts here

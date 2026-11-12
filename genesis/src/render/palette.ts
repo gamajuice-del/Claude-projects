@@ -16,7 +16,7 @@ export function civCss(color: number, alpha = 1): string {
 export const STYLES: { wall: [number, number, number]; roof: [number, number, number]; name: string }[] = [
   { wall: [206, 172, 128], roof: [164, 74, 54], name: 'timber and red tile' },
   { wall: [232, 228, 214], roof: [70, 118, 176], name: 'whitewash and blue tile' },
-  { wall: [156, 152, 148], roof: [84, 80, 92], name: 'grey stone and slate' },
+  { wall: [176, 172, 166], roof: [84, 98, 138], name: 'grey stone and blue slate' },
   { wall: [222, 196, 142], roof: [196, 128, 78], name: 'sandstone and terracotta' },
   { wall: [128, 98, 72], roof: [204, 178, 104], name: 'dark timber and thatch' },
 ];
