@@ -6,7 +6,9 @@ change any of it.
 
 **Play it:** open `dist/index.html` in a browser. It is one self-contained file (no server, no install).
 
-![a world 300 years in](docs/world.png)
+![a world 250 years in](docs/world.png)
+
+![a city of the Tivo Empire](docs/town.png)
 
 ## Playing
 
@@ -76,6 +78,7 @@ src/sim/      the simulation — pure TypeScript, no DOM, deterministic
   save.ts       exact serialization + state hash
   sim.ts        creation and the tick
 src/render/   Canvas renderer — reads simulation state, never writes it
+  sprites.ts    the sprite sheet, as text
   terrain.ts    pixel-art rasterizer into cached 256×256 chunks (8 px per tile), double-buffered seasons
   renderer.ts   camera, sea, borders, overlays, herds, people, caravans, armies, weather, effects, labels
 src/ui/       DOM interface: palette, inspector, windows, storage
@@ -94,15 +97,18 @@ depends on the camera, so a world develops identically whether or not anyone is 
 **Scale and cost.** Tile fields are typed arrays; animals use a coarse spatial grid; pathfinding results
 (trade routes) are stored and reused. On the default 256×160 world the simulation costs roughly 1 ms per
 tick at 1,000 people and 3–4 ms at 6,000–9,000 (Node 22, one core), i.e. several simulated years per
-second at full speed. In headless Chromium the game held 49–59 fps while simulating at normal speed, and
-about 300 ticks/s at maximum speed with ~3,000 people. World size (160×100 to 448×280) and the population
+second at full speed. In headless Chromium the game held 54–61 fps while simulating at normal speed, and
+300–430 ticks/s at maximum speed with ~3,000 people. World size (160×100 to 448×280) and the population
 limit (5k–50k) are chosen at world creation; the limit works by damping births as it is approached.
 
-**Rendering.** Terrain is rasterized by hand into pixel buffers from the continuous simulation fields
-(moisture, vegetation, temperature, elevation) and cached per chunk; only chunks touched by a change are
-redrawn. Seasonal redraws are painted off-screen and swapped in whole so neighbouring chunks never show
-different months. Everything animated (waves, walkers, particles, clouds) is computed only for what is on
-screen.
+**Rendering.** The look is chunky pixel art: every tile is a flat block of palette colour chosen from
+what the simulation says is there (biome, moisture, season), with stepped terraces, banded sea depths and
+foam at the shore; everything standing on the land — trees, peaks, houses, walls, people, herds, ships —
+is a hand-drawn outlined sprite written as text in `src/render/sprites.ts` and recoloured per culture,
+season, species and nation. Terrain is rasterized by hand into pixel buffers and cached per chunk; only
+chunks touched by a change are redrawn. Seasonal redraws are painted off-screen and swapped in whole so
+neighbouring chunks never show different months. Everything animated (waves, walkers, particles, clouds)
+is computed only for what is on screen.
 
 ## What is simulated
 

@@ -5,6 +5,7 @@ import { B, I_URBAN, J, PARTY, Person, Settlement, Sim, TICKS_PER_YEAR, W_LAND }
 import { meanTemp, tempAt } from '../sim/world';
 import { BIOME_COLORS, CIV_COLORS, JOB_COLORS, civCss } from './palette';
 import { CHUNK, CPX, TILE, TerrainLayer } from './terrain';
+import * as SP from './sprites';
 
 export type MapMode = 'normal' | 'political' | 'temperature' | 'rainfall' | 'fertility' | 'resources' | 'culture' | 'religion' | 'biome';
 export interface Pick {
@@ -52,6 +53,8 @@ export class Renderer {
   private fx: Fx[] = [];
   private frameNo = 0;
   private personSprites: HTMLCanvasElement[] = [];
+  private childSprites: HTMLCanvasElement[] = [];
+  private cache = new Map<string, HTMLCanvasElement>();
   minimap: HTMLCanvasElement | null = null;
   private miniTimer = 0;
 
@@ -218,28 +221,27 @@ export class Renderer {
     }
   }
 
-  private makePeople(): void {
-    // 3×5 px figures, one per occupation, two walking frames each
-    for (let j = 0; j < JOB_COLORS.length; j++) {
-      for (let f = 0; f < 2; f++) {
-        const c = document.createElement('canvas');
-        c.width = 3;
-        c.height = 5;
-        const g = c.getContext('2d')!;
-        const col = JOB_COLORS[j];
-        g.fillStyle = '#e8c39a';
-        g.fillRect(1, 0, 1, 1);
-        g.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
-        g.fillRect(0, 1, 3, 2);
-        g.fillRect(1, 3, 1, 1);
-        g.fillStyle = '#3a2f2a';
-        if (f === 0) { g.fillRect(0, 4, 1, 1); g.fillRect(2, 4, 1, 1); g.fillRect(0, 3, 1, 1); g.fillRect(2, 3, 1, 1); }
-        else { g.fillRect(1, 4, 1, 1); g.fillRect(0, 3, 1, 1); }
-        if (j === J.soldier) { g.fillStyle = '#c8ccd4'; g.fillRect(1, 0, 1, 1); }
-        if (j === J.priest) { g.fillStyle = '#f2d36a'; g.fillRect(1, 0, 1, 1); }
-        this.personSprites.push(c);
-      }
+  /** cached sprite canvases, keyed by drawing + colours */
+  private spr(s: SP.Sprite, key: string, colors: Record<string, string>, flip = false): HTMLCanvasElement {
+    const k = key + (flip ? '<' : '>');
+    let c = this.cache.get(k);
+    if (!c) {
+      if (!colors.o) colors.o = '#28243a';
+      c = SP.spriteCanvas(s, colors, flip);
+      this.cache.set(k, c);
     }
+    return c;
+  }
+
+  private makePeople(): void {
+    // one little figure per occupation, two walking frames each
+    for (let j = 0; j < JOB_COLORS.length; j++) {
+      const col = JOB_COLORS[j];
+      const colors = { h: j === J.soldier ? '#c8ccd6' : j === J.priest ? '#f2d36a' : j === J.scholar ? '#e8e4f0' : '#4a3426', s: '#f0c8a0', b: `rgb(${col[0]},${col[1]},${col[2]})`, l: '#3a2f2a', o: '#28243a' };
+      this.personSprites.push(SP.spriteCanvas(SP.PERSON_A, colors), SP.spriteCanvas(SP.PERSON_B, colors));
+    }
+    const kid = { s: '#f0c8a0', b: '#f0e0c0', l: '#3a2f2a', o: '#28243a' };
+    this.childSprites.push(SP.spriteCanvas(SP.CHILD_A, kid), SP.spriteCanvas(SP.CHILD_B, kid));
   }
 
   addFx(kind: string, x: number, y: number, r: number): void {
@@ -314,7 +316,7 @@ export class Renderer {
     }
     // ---------- sea ----------
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#12305e';
+    ctx.fillStyle = '#1a4486'; // the open ocean, so the edge of the charted world is seamless
     ctx.fillRect(0, 0, this.cw, this.ch);
     let shx = 0, shy = 0;
     if (this.shake > 0.01) {
@@ -339,7 +341,7 @@ export class Renderer {
     }
     // ---------- land (cached chunks) ----------
     ctx.setTransform(c.zoom, 0, 0, c.zoom, ox, oy);
-    ctx.imageSmoothingEnabled = c.zoom < 0.95;
+    ctx.imageSmoothingEnabled = c.zoom < 0.8 * this.dpr;
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {
         ctx.drawImage(this.terrain.canvases[cy * cols + cx], cx * CPX, cy * CPX);
@@ -358,7 +360,7 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
     if (this.showBorders) {
-      ctx.imageSmoothingEnabled = c.zoom < 0.95;
+      ctx.imageSmoothingEnabled = c.zoom < 0.8 * this.dpr;
       for (let cy = cy0; cy <= cy1; cy++) {
         for (let cx = cx0; cx <= cx1; cx++) ctx.drawImage(this.borderCanvases[cy * cols + cx], cx * CPX, cy * CPX);
       }
@@ -448,25 +450,25 @@ export class Renderer {
           if (!col) continue;
           const px = tx * TILE,
             py = ty * TILE;
-          g.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.09)`;
+          g.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.1)`;
           g.fillRect(px, py, TILE, TILE);
           const edge = (j: number, inB: boolean, ex: number, ey: number, ew: number, eh: number, sx: number, sy: number, sw: number, sh: number) => {
             const oc = inB ? tc[j] : -1;
             if (inB && oc < 0 && w.water[j] !== W_LAND) return; // the shore is border enough
             if (oc !== cv) {
-              g.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.95)`;
-              g.fillRect(px + ex, py + ey, ew, eh);
-              g.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.35)`;
+              g.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.4)`;
               g.fillRect(px + sx, py + sy, sw, sh);
+              g.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+              g.fillRect(px + ex, py + ey, ew === 1 ? 2 : ew, eh === 1 ? 2 : eh);
             } else if (inB && ts[j] !== ts[i] && ((x + y) & 1) === 0) {
               g.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.3)`;
               g.fillRect(px + ex, py + ey, ew, eh);
             }
           };
-          edge(i - 1, x > 0, 0, 0, 1, TILE, 1, 0, 2, TILE);
-          edge(i + 1, x < w.w - 1, TILE - 1, 0, 1, TILE, TILE - 3, 0, 2, TILE);
-          edge(i - w.w, y > 0, 0, 0, TILE, 1, 0, 1, TILE, 2);
-          edge(i + w.w, y < w.h - 1, 0, TILE - 1, TILE, 1, 0, TILE - 3, TILE, 2);
+          edge(i - 1, x > 0, 0, 0, 1, TILE, 2, 0, 2, TILE);
+          edge(i + 1, x < w.w - 1, TILE - 2, 0, 1, TILE, TILE - 4, 0, 2, TILE);
+          edge(i - w.w, y > 0, 0, 0, TILE, 1, 0, 2, TILE, 2);
+          edge(i + w.w, y < w.h - 1, 0, TILE - 2, TILE, 1, 0, TILE - 4, TILE, 2);
         }
       }
     }
@@ -634,7 +636,7 @@ export class Renderer {
       const p = sim.people.get(sel.id);
       if (p) {
         const wk = this.walkers.find((q) => q.id === p.id);
-        if (wk) ring(wk.x + 0.75, wk.y + 1.25, 4, '#ffe37a');
+        if (wk) ring(wk.x, wk.y, 6, '#ffe37a');
         else if (p.army >= 0) {
           const a = sim.armies.get(p.army);
           if (a) ring((a.x + 0.5) * TILE, (a.y + 0.5) * TILE, 10, '#ffe37a');
@@ -711,7 +713,7 @@ export class Renderer {
   private drawHerds(vr: { x0: number; y0: number; x1: number; y1: number }, zCss: number): void {
     const sim = this.sim;
     const ctx = this.ctx;
-    if (zCss < 0.32) return;
+    if (zCss < 0.55) return; // from far above, herds are too small to see
     const t = this.time;
     for (const h of sim.herds.values()) {
       if (h.x < vr.x0 - 2 || h.x > vr.x1 + 2 || h.y < vr.y0 - 2 || h.y > vr.y1 + 2) continue;
@@ -721,51 +723,25 @@ export class Renderer {
       const r = (col >> 16) & 255,
         g = (col >> 8) & 255,
         b = col & 255;
-      const bx = (h.x + 0.5) * TILE,
-        by = (h.y + 0.5) * TILE;
-      const show = zCss < 0.8 ? 1 : Math.min(7, Math.max(1, Math.round(Math.sqrt(h.n))));
+      const colors = { a: `rgb(${r},${g},${b})`, b: `rgb(${(r * 0.62) | 0},${(g * 0.62) | 0},${(b * 0.62) | 0})`, e: '#1c1820', w: '#f4eedc', o: `rgb(${(r * 0.3) | 0},${(g * 0.3) | 0},${(b * 0.34) | 0})` };
       const big = h.size > 0.8,
         small = h.size < 0.25;
+      const A = sp.shape === 4 ? SP.BIRD : big ? SP.GIANT : small ? SP.CRITTER : sp.diet === 1 ? SP.PREDATOR : SP.GRAZER;
+      const Bf = sp.shape === 4 ? SP.BIRD : big ? SP.GIANT : small ? SP.CRITTER : sp.diet === 1 ? SP.PREDATOR_B : SP.GRAZER_B;
+      const key = 'sp' + sp.id + (A === SP.BIRD ? 'b' : big ? 'g' : small ? 'c' : sp.diet === 1 ? 'p' : 'z');
+      const bx = (h.x + 0.5) * TILE,
+        by = (h.y + 0.5) * TILE;
+      const show = zCss < 1.3 ? 1 : Math.min(3, Math.max(1, Math.round(Math.sqrt(h.n) / 3)));
       for (let k = 0; k < show; k++) {
         const hx = hash2(h.id, k, 11) - 0.5,
           hy = hash2(h.id, k, 12) - 0.5;
-        const wob = Math.sin(t * (0.8 + hx) + k * 2.1) * 1.2;
-        const ax = bx + hx * 14 + wob,
-          ay = by + hy * 10 + Math.cos(t * 0.6 + k) * 0.8;
-        const flip = Math.sin(t * 0.3 + k + h.id) > 0 ? 1 : -1;
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        if (zCss < 0.8) {
-          ctx.fillRect(ax - 1, ay - 1, 2.4, 2.4);
-          continue;
-        }
-        if (sp.shape === 4) {
-          // bird: tall body, long legs
-          ctx.fillRect(ax, ay - 2, 1.6, 2);
-          ctx.fillRect(ax + flip * 0.8, ay - 3, 1, 1.2);
-          ctx.fillStyle = '#4a3a30';
-          ctx.fillRect(ax + 0.4, ay, 0.6, 1.6);
-        } else if (small) {
-          ctx.fillRect(ax, ay, 2, 1.2);
-          ctx.fillRect(ax + (flip > 0 ? 1.6 : -0.6), ay - 0.6, 1, 1);
-        } else {
-          const bw = big ? 5 : 3.4,
-            bh = big ? 3 : 1.8;
-          ctx.fillRect(ax - bw / 2, ay - bh, bw, bh);
-          // head
-          ctx.fillRect(ax + (flip > 0 ? bw / 2 - 0.4 : -bw / 2 - 1.2), ay - bh - (sp.diet === 1 ? 0.2 : 0.9), 1.6, 1.4);
-          // legs
-          ctx.fillStyle = `rgb(${(r * 0.6) | 0},${(g * 0.6) | 0},${(b * 0.6) | 0})`;
-          const step = Math.sin(t * 5 + k) > 0 ? 0.5 : 0;
-          ctx.fillRect(ax - bw / 2 + 0.3 + step, ay, 0.8, 1.3);
-          ctx.fillRect(ax + bw / 2 - 1.1 - step, ay, 0.8, 1.3);
-          if (big) {
-            ctx.fillStyle = '#f0ead8';
-            ctx.fillRect(ax + (flip > 0 ? bw / 2 + 0.8 : -bw / 2 - 1.6), ay - bh + 0.6, 0.8, 1.6); // tusk / horn
-          } else if (sp.diet === 1) {
-            ctx.fillStyle = '#2a2020';
-            ctx.fillRect(ax + (flip > 0 ? -bw / 2 - 1 : bw / 2), ay - bh + 0.2, 1.2, 0.6); // tail
-          }
-        }
+        const wob = Math.sin(t * (0.5 + hx) + k * 2.1) * 2;
+        const ax = Math.round(bx + hx * 14 + wob),
+          ay = Math.round(by + hy * 9 + Math.cos(t * 0.4 + k) * 1.2);
+        const flip = Math.sin(t * 0.25 + k + h.id) < 0;
+        const walking = Math.sin(t * 3 + k * 1.7 + h.id) > 0;
+        const cv = this.spr(walking ? A : Bf, key + (walking ? 'a' : 'b'), colors, flip);
+        ctx.drawImage(cv, ax - (cv.width >> 1), ay - cv.height + 2);
       }
     }
   }
@@ -809,7 +785,7 @@ export class Renderer {
       }
       // the people themselves, when close enough to see them
       if (zCss < 1.7) continue;
-      const cap = Math.min(s.people.length, zCss > 3 ? 90 : 45);
+      const cap = Math.min(s.people.length, zCss > 3 ? 12 + Math.round(s.urban.length * 0.9) : 8 + Math.round(s.urban.length * 0.45));
       const stepP = Math.max(1, Math.floor(s.people.length / cap));
       const T = tempAt(w, sim.climate, s.tile, sim.tick);
       for (let k = 0; k < s.people.length; k += stepP) {
@@ -818,11 +794,11 @@ export class Renderer {
         const pos = this.personPos(s, p, t, T);
         if (!pos) continue;
         const frame = pos.moving && ((t * 6 + p.id) & 1) ? 1 : 0;
-        const child = p.job === J.child;
-        // figures are drawn at half size so a person is small beside a house
-        if (child) ctx.drawImage(this.personSprites[frame], pos.x, pos.y + 0.7, 1.1, 1.8);
-        else ctx.drawImage(this.personSprites[p.job * 2 + frame], pos.x, pos.y, 1.5, 2.5);
-        this.walkers.push({ id: p.id, x: pos.x, y: pos.y });
+        const px = Math.round(pos.x),
+          py = Math.round(pos.y);
+        if (p.job === J.child) ctx.drawImage(this.childSprites[frame], px, py + 2);
+        else ctx.drawImage(this.personSprites[p.job * 2 + frame], px, py);
+        this.walkers.push({ id: p.id, x: px + 2, y: py + 3 });
       }
     }
   }
@@ -879,90 +855,61 @@ export class Renderer {
     const t = this.time;
     for (const p of sim.parties.values()) {
       if (p.x < vr.x0 - 2 || p.x > vr.x1 + 2 || p.y < vr.y0 - 2 || p.y > vr.y1 + 2) continue;
-      // smooth between path nodes
-      let fx = p.x, fy = p.y;
+      // glide between path nodes
+      let fx = p.x, fy = p.y, dirX = 1;
       if (p.pi < p.path.length - 1) {
         const nxt = p.path[p.pi + 1];
         const f = Math.min(1, p.acc / 1.5);
-        fx += ((nxt % w.w) - p.x) * f * 0.6;
+        dirX = (nxt % w.w) - p.x;
+        fx += dirX * f * 0.6;
         fy += (((nxt / w.w) | 0) - p.y) * f * 0.6;
       }
-      const bx = (fx + 0.5) * TILE,
-        by = (fy + 0.5) * TILE;
+      const bx = Math.round((fx + 0.5) * TILE),
+        by = Math.round((fy + 0.5) * TILE);
       const civ = sim.civs.get(p.civ);
       const col = civ ? civCss(civ.color) : '#d8d0c0';
       const era = civ ? civ.era : 0;
-      const sc = zCss < 0.6 ? 1.6 : 1;
+      const flip = dirX < 0;
       if (p.sea) {
-        const bob = Math.sin(t * 2 + p.id) * 0.5;
-        this.drawShip(bx, by + bob, era, col, sc, p.kind === PARTY.caravan);
+        this.drawShip(bx, by + Math.round(Math.sin(t * 2 + p.id)), era, col, p.kind === PARTY.caravan, flip, civ ? civ.color : -1);
         continue;
       }
       if (p.kind === PARTY.caravan) {
-        const step = Math.sin(t * 6 + p.id) > 0 ? 0.5 : 0;
-        ctx.fillStyle = '#8a6a48';
-        ctx.fillRect(bx - 4 * sc, by - 2 * sc, 3.4 * sc, 2 * sc); // pack animal
-        ctx.fillRect(bx - 1.2 * sc, by - 3 * sc, 1.2 * sc, 1.4 * sc);
-        ctx.fillStyle = '#5a4634';
-        ctx.fillRect(bx - 3.6 * sc + step, by, 0.8 * sc, 1.2 * sc);
-        ctx.fillRect(bx - 1.6 * sc - step, by, 0.8 * sc, 1.2 * sc);
-        if (era >= 1) {
-          ctx.fillStyle = '#a07c50';
-          ctx.fillRect(bx + 0.6 * sc, by - 2.4 * sc, 4 * sc, 2 * sc); // cart
-          ctx.fillStyle = '#3a2f2a';
-          ctx.fillRect(bx + 1.2 * sc, by - 0.4 * sc, 1.2 * sc, 1.2 * sc);
-          ctx.fillRect(bx + 3.2 * sc, by - 0.4 * sc, 1.2 * sc, 1.2 * sc);
-        }
-        ctx.fillStyle = col;
-        ctx.fillRect(bx + (era >= 1 ? 1.4 : -3.4) * sc, by - (era >= 1 ? 3.6 : 3.2) * sc, 2.4 * sc, 1.2 * sc); // cargo in the owner's colours
+        const wheeled = era >= 1;
+        const cv = this.spr(wheeled ? SP.CARAVAN : SP.PACK, (wheeled ? 'car' : 'pack') + (civ ? civ.color : 'x'), { a: '#a07c56', b: '#5e4634', c: col, w: '#b88c5a', k: '#33291f' }, flip);
+        ctx.drawImage(cv, bx - (cv.width >> 1), by - cv.height + 3 + (Math.sin(t * 8 + p.id) > 0 ? 0 : 1));
       } else {
-        // people on the road: a huddle of figures with bundles
-        const n = Math.min(9, Math.max(2, Math.ceil(p.people.length / 4)));
-        for (let k = 0; k < n; k++) {
-          const ox = (hash2(p.id, k, 21) - 0.5) * 9,
-            oy = (hash2(p.id, k, 22) - 0.5) * 6;
-          const fr = ((t * 6 + k) & 1) === 0 ? 0 : 1;
-          ctx.drawImage(this.personSprites[(p.kind === PARTY.refugees ? J.laborer : J.farmer) * 2 + fr], bx + ox - 1, by + oy - 2, 1.8, 3);
-        }
+        // people on the road
+        const n = Math.min(8, Math.max(2, Math.ceil(p.people.length / 4)));
         if (p.kind === PARTY.settlers) {
-          ctx.fillStyle = '#e8e0cc';
-          ctx.fillRect(bx - 2, by - 5, 4.5, 2.6); // wagon cover
-          ctx.fillStyle = '#7a5c3c';
-          ctx.fillRect(bx - 2, by - 2.4, 4.5, 1.2);
+          const cv = this.spr(SP.WAGON, 'wagon', { s: '#f2ead6', w: '#9a7248', k: '#33291f' }, flip);
+          ctx.drawImage(cv, bx - 4, by - 7);
           ctx.fillStyle = col;
-          ctx.fillRect(bx + 2.6, by - 7, 1.8, 1.4);
+          ctx.fillRect(bx + 4, by - 10, 3, 2);
+          ctx.fillStyle = '#3a2f2a';
+          ctx.fillRect(bx + 3, by - 10, 1, 4);
+        }
+        for (let k = 0; k < n; k++) {
+          const ox = Math.round((hash2(p.id, k, 21) - 0.5) * 12),
+            oy = Math.round((hash2(p.id, k, 22) - 0.5) * 7);
+          const fr = ((t * 6 + k) & 1) === 0 ? 0 : 1;
+          ctx.drawImage(this.personSprites[(p.kind === PARTY.refugees ? J.laborer : J.farmer) * 2 + fr], bx + ox - 2, by + oy - 2);
         }
       }
     }
   }
 
-  private drawShip(bx: number, by: number, era: number, col: string, sc: number, merchant: boolean): void {
+  private drawShip(bx: number, by: number, era: number, col: string, merchant: boolean, flip: boolean, civColor: number): void {
     const ctx = this.ctx;
-    ctx.fillStyle = era >= 5 ? '#4a4c56' : '#7a5636';
-    ctx.fillRect(bx - 4 * sc, by, 8 * sc, 2 * sc);
-    ctx.fillRect(bx - 3 * sc, by + 2 * sc, 6 * sc, 1 * sc);
-    if (era >= 5) {
-      ctx.fillStyle = '#c8ccd4';
-      ctx.fillRect(bx - 1.5 * sc, by - 2 * sc, 3 * sc, 2 * sc);
-      ctx.fillStyle = '#2c2c32';
-      ctx.fillRect(bx, by - 4.5 * sc, 1.2 * sc, 2.5 * sc);
-      if (Math.random() < 0.08) this.spawn(bx + 0.6, by - 5, 1.5, -3, 1.8, 80, 80, 86, 2);
-    } else if (era >= 1) {
-      ctx.fillStyle = '#5a4030';
-      ctx.fillRect(bx - 0.3 * sc, by - 5.5 * sc, 0.8 * sc, 5.5 * sc);
-      ctx.fillStyle = merchant ? '#f0e8d4' : col;
-      ctx.fillRect(bx - 2.6 * sc, by - 5 * sc, 5.2 * sc, 3.2 * sc);
-      if (era >= 3) ctx.fillRect(bx - 2 * sc, by - 7 * sc, 4 * sc, 1.6 * sc);
-    } else {
-      ctx.fillStyle = '#e8c39a';
-      ctx.fillRect(bx - 1 * sc, by - 1.4 * sc, 1 * sc, 1.4 * sc);
-      ctx.fillRect(bx + 1 * sc, by - 1.4 * sc, 1 * sc, 1.4 * sc);
-    }
-    ctx.fillStyle = col;
-    ctx.fillRect(bx + 2.8 * sc, by - (era >= 1 ? 6.4 : 2.4) * sc, 1.6 * sc, 1.2 * sc);
-    ctx.fillStyle = 'rgba(230,244,250,0.55)';
-    ctx.fillRect(bx - 5.5 * sc, by + 2.6 * sc, 2 * sc, 0.6 * sc);
-    ctx.fillRect(bx + 3.8 * sc, by + 2.8 * sc, 2.2 * sc, 0.6 * sc);
+    const key = (era >= 5 ? 'steam' : era >= 1 ? 'ship' : 'canoe') + (merchant ? 'm' : 'w') + civColor;
+    const colors = { h: era >= 5 ? '#565a68' : '#8a5e3a', s: merchant ? '#f4ecd8' : col, m: '#4a3628', f: col, w: '#e2e4ea', k: '#2e2c34', o: '#28243a' };
+    const cv = this.spr(era >= 5 ? SP.STEAMER : era >= 1 ? SP.SHIP : SP.CANOE, key, colors, flip);
+    ctx.drawImage(cv, bx - (cv.width >> 1), by - cv.height + 4);
+    // wake
+    ctx.fillStyle = 'rgba(236,248,252,0.7)';
+    ctx.fillRect(bx - (cv.width >> 1) - 2, by + 4, 3, 1);
+    ctx.fillRect(bx + (cv.width >> 1) - 1, by + 4, 3, 1);
+    if (era >= 5 && Math.random() < 0.08) this.spawn(bx, by - cv.height + 2, 1.5, -3, 1.8, 90, 90, 98, 2);
   }
 
   private drawArmies(vr: { x0: number; y0: number; x1: number; y1: number }, zCss: number): void {
@@ -974,69 +921,63 @@ export class Renderer {
       if (a.x < vr.x0 - 3 || a.x > vr.x1 + 3 || a.y < vr.y0 - 3 || a.y > vr.y1 + 3) continue;
       const civ = sim.civs.get(a.civ);
       if (!civ) continue;
-      let fx = a.x, fy = a.y;
+      let fx = a.x, fy = a.y, dirX = 1;
       if (a.path.length > 0 && a.pi < a.path.length - 1 && a.foe < 0) {
         const nxt = a.path[a.pi + 1];
         const f = Math.min(1, a.moveAcc / 1.5);
-        fx += ((nxt % w.w) - a.x) * f * 0.6;
+        dirX = (nxt % w.w) - a.x;
+        fx += dirX * f * 0.6;
         fy += (((nxt / w.w) | 0) - a.y) * f * 0.6;
       }
-      const bx = (fx + 0.5) * TILE,
-        by = (fy + 0.5) * TILE;
+      const bx = Math.round((fx + 0.5) * TILE),
+        by = Math.round((fy + 0.5) * TILE);
       const col = civCss(civ.color);
-      const sc = zCss < 0.6 ? 1.7 : 1;
+      const flip = dirX < 0;
       if (a.atSea) {
-        const bob = Math.sin(t * 2 + a.id) * 0.5;
-        this.drawShip(bx - 5, by + bob, civ.era, col, sc, false);
-        this.drawShip(bx + 5, by + 2 - bob, civ.era, col, sc, false);
+        this.drawShip(bx - 6, by + Math.round(Math.sin(t * 2 + a.id)), civ.era, col, false, flip, civ.color);
+        this.drawShip(bx + 7, by + 3, civ.era, col, false, flip, civ.color);
         continue;
       }
-      const n = Math.max(3, Math.min(20, Math.round(a.soldiers.length / 5)));
-      const colsN = Math.ceil(Math.sqrt(n * 1.6));
+      const n = Math.max(3, Math.min(18, Math.round(a.soldiers.length / 5)));
+      const colsN = Math.ceil(Math.sqrt(n * 1.8));
       const fighting = a.fighting > 0;
       const moving = a.path.length > 0 && a.pi < a.path.length - 1;
+      const colors = { h: civ.era >= 2 ? '#c8ccd6' : '#6e5a44', s: '#f0c8a0', b: col, l: '#3a2f2a', p: civ.era >= 4 ? '#3c3c48' : '#d0d2da', o: '#28243a' };
+      const s0 = this.spr(SP.SOLDIER_A, 'sol' + civ.color + (civ.era >= 2 ? 'h' : 'n') + (civ.era >= 4 ? 'g' : 's') + 'a', colors, flip);
+      const s1 = this.spr(SP.SOLDIER_B, 'sol' + civ.color + (civ.era >= 2 ? 'h' : 'n') + (civ.era >= 4 ? 'g' : 's') + 'b', colors, flip);
       for (let k = 0; k < n; k++) {
         const gx = k % colsN,
           gy = (k / colsN) | 0;
-        const jx = fighting ? (Math.random() - 0.5) * 1.6 : 0,
-          jy = fighting ? (Math.random() - 0.5) * 1.2 : 0;
-        const x = bx + (gx - colsN / 2) * 3.2 * sc + jx,
-          y = by + (gy - 1) * 4 * sc + jy;
-        const step = moving && ((t * 6 + k) & 1) ? 0.6 : 0;
-        ctx.fillStyle = '#e8c39a';
-        ctx.fillRect(x + 0.5 * sc, y - 3 * sc, 1.2 * sc, 1 * sc);
-        ctx.fillStyle = civ.era >= 2 ? '#c2c6ce' : '#6e5a44';
-        ctx.fillRect(x + 0.4 * sc, y - 3.6 * sc, 1.4 * sc, 0.8 * sc); // helm / hair
-        ctx.fillStyle = col;
-        ctx.fillRect(x, y - 2 * sc, 2.2 * sc, 2 * sc);
-        ctx.fillStyle = '#3a2f2a';
-        ctx.fillRect(x + step, y, 0.8 * sc, 1 * sc);
-        ctx.fillRect(x + 1.4 * sc - step, y, 0.8 * sc, 1 * sc);
-        // weapon: spear, then pike/musket, then rifle
-        ctx.fillStyle = civ.era >= 4 ? '#3c3c44' : '#a8a8b0';
-        ctx.fillRect(x + 2.3 * sc, y - (civ.era >= 4 ? 2.4 : 4.4) * sc, 0.5 * sc, (civ.era >= 4 ? 2 : 4) * sc);
+        const jx = fighting ? Math.round((Math.random() - 0.5) * 2) : 0,
+          jy = fighting ? Math.round((Math.random() - 0.5) * 2) : 0;
+        const x = bx + Math.round((gx - colsN / 2) * 5) + jx,
+          y = by + (gy - 1) * 6 + jy;
+        ctx.drawImage(moving && ((t * 6 + k) & 1) ? s1 : s0, x, y - 5);
       }
-      // banner
-      const px = bx - (colsN / 2) * 3.2 * sc - 2 * sc;
-      ctx.fillStyle = '#4a4038';
-      ctx.fillRect(px, by - 9 * sc, 0.7 * sc, 9 * sc);
+      // the banner
+      const px = bx - Math.round((colsN / 2) * 5) - 3;
+      const wave = Math.sin(t * 5 + a.id) > 0 ? 0 : 1;
+      ctx.fillStyle = '#28243a';
+      ctx.fillRect(px - 1, by - 15, 3, 16);
+      ctx.fillRect(px + 1, by - 16 + wave, 8, 7);
+      ctx.fillStyle = '#6a5a4a';
+      ctx.fillRect(px, by - 14, 1, 14);
       ctx.fillStyle = col;
-      const wave = Math.sin(t * 5 + a.id) * 0.5;
-      ctx.fillRect(px + 0.7 * sc, by - 9 * sc + wave, 3.6 * sc, 2.6 * sc);
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillRect(px + 1.6 * sc, by - 8.2 * sc + wave, 1.4 * sc, 1 * sc);
+      ctx.fillRect(px + 2, by - 15 + wave, 6, 5);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(px + 4, by - 13 + wave, 2, 1);
       if (fighting && Math.random() < 0.5) {
-        this.spawn(bx + (Math.random() - 0.5) * 14, by - 2 + (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 16, -8 - Math.random() * 6, 0.45, 255, 236, 150, 1.2, 30);
+        this.spawn(bx + (Math.random() - 0.5) * 16, by - 2 + (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 18, -9 - Math.random() * 6, 0.45, 255, 236, 150, 2, 30);
       }
       // siege camp
       if (a.goal === 1 && !moving && a.foe < 0) {
-        ctx.fillStyle = '#d8ccb0';
-        ctx.fillRect(bx + 6 * sc, by + 3 * sc, 3 * sc, 2 * sc);
-        ctx.fillStyle = '#b0a488';
-        ctx.fillRect(bx + 7 * sc, by + 2 * sc, 1 * sc, 1 * sc);
-        if (Math.random() < 0.03) this.spawn(bx + 5, by + 6, 0.5, -3, 1.6, 200, 190, 180, 1.6);
+        const tent = this.spr(SP.TENT, 'tent', { s: '#e8dcc0', d: '#5a4a3a' });
+        ctx.drawImage(tent, bx + 10, by);
+        ctx.drawImage(tent, bx + 16, by + 3);
+        if (Math.random() < 0.03) this.spawn(bx + 12, by + 2, 0.5, -3, 1.6, 200, 190, 180, 2);
       }
     }
+    void zCss;
   }
 
   private drawParticles(dt: number): void {
@@ -1063,45 +1004,46 @@ export class Renderer {
     const sim = this.sim;
     const ctx = this.ctx;
     const t = this.time;
+    const white = this.spr(SP.CLOUD, 'cloudw', { w: '#fbfdff', g: '#cfdcea' });
+    const grey = this.spr(SP.CLOUD, 'cloudg', { w: '#aab4c4', g: '#77829a' });
+    const snow = this.spr(SP.CLOUD, 'clouds', { w: '#ffffff', g: '#dfe8f4' });
+    const dark = this.spr(SP.CLOUD, 'cloudd', { w: '#1a2238', g: '#1a2238' });
     for (const s of sim.storms) {
-      if (s.x < vr.x0 - s.r - 4 || s.x > vr.x1 + s.r + 4 || s.y < vr.y0 - s.r - 4 || s.y > vr.y1 + s.r + 4) continue;
+      if (s.x < vr.x0 - s.r - 6 || s.x > vr.x1 + s.r + 6 || s.y < vr.y0 - s.r - 6 || s.y > vr.y1 + s.r + 6) continue;
       const cx = (s.x + 0.5) * TILE,
         cy = (s.y + 0.5) * TILE;
       const R = s.r * TILE;
       const fade = Math.min(1, s.life / 30) * Math.min(1, s.power);
-      // shadow on the ground
-      ctx.fillStyle = `rgba(10,20,40,${(0.16 * fade).toFixed(3)})`;
-      ctx.beginPath();
-      ctx.ellipse(cx + 6, cy + 10, R * 0.95, R * 0.7, 0, 0, Math.PI * 2);
-      ctx.fill();
-      const dark = s.kind === 1 || s.kind === 3;
-      const puffs = s.kind === 3 ? 16 : 9;
-      for (let k = 0; k < puffs; k++) {
-        let ax: number, ay: number;
-        if (s.kind === 3) {
-          const ang = k * 0.9 + t * 0.9,
-            rr = (k / puffs) * R;
-          ax = cx + Math.cos(ang) * rr;
-          ay = cy + Math.sin(ang) * rr * 0.8;
-        } else {
-          ax = cx + (hash2(s.id, k, 31) - 0.5) * R * 1.5 + Math.sin(t * 0.3 + k) * 3;
-          ay = cy + (hash2(s.id, k, 32) - 0.5) * R * 1.0;
+      const cv = s.kind === 1 || s.kind === 3 ? grey : s.kind === 2 ? snow : white;
+      const puffs = s.kind === 3 ? 12 : 6;
+      for (let pass = 0; pass < 2; pass++) {
+        ctx.globalAlpha = pass === 0 ? 0.2 * fade : 0.92 * fade;
+        for (let k = 0; k < puffs; k++) {
+          let ax: number, ay: number;
+          if (s.kind === 3) {
+            const ang = k * 1.1 + t * 0.8,
+              rr = (0.25 + (k / puffs) * 0.75) * R;
+            ax = cx + Math.cos(ang) * rr;
+            ay = cy + Math.sin(ang) * rr * 0.75;
+          } else {
+            ax = cx + (hash2(s.id, k, 31) - 0.5) * R * 1.5 + Math.sin(t * 0.3 + k) * 3;
+            ay = cy + (hash2(s.id, k, 32) - 0.5) * R * 0.9;
+          }
+          const sc = 2 + Math.floor(hash2(s.id, k, 33) * 2);
+          const dw = cv.width * sc,
+            dh = cv.height * sc;
+          if (pass === 0) ctx.drawImage(dark, Math.round(ax - dw / 2 + 8), Math.round(ay - dh / 2 + 14), dw, dh); // shadow on the ground
+          else ctx.drawImage(cv, Math.round(ax - dw / 2), Math.round(ay - dh / 2), dw, dh);
         }
-        const pr = R * (0.28 + hash2(s.id, k, 33) * 0.22);
-        const shade = dark ? 150 + ((k * 13) % 40) : s.kind === 2 ? 236 : 226 + ((k * 7) % 24);
-        ctx.fillStyle = `rgba(${shade},${shade},${shade + 8},${(0.5 * fade).toFixed(3)})`;
-        ctx.beginPath();
-        ctx.ellipse(ax, ay, pr, pr * 0.62, 0, 0, Math.PI * 2);
-        ctx.fill();
       }
-      // precipitation
+      ctx.globalAlpha = 1;
       const drops = Math.min(14, Math.ceil(s.r * 1.2));
       for (let k = 0; k < drops; k++) {
         if (Math.random() > 0.5) continue;
         const ax = cx + (Math.random() - 0.5) * R * 1.6,
           ay = cy + (Math.random() - 0.5) * R * 1.1;
-        if (s.kind === 2) this.spawn(ax, ay, 4 + Math.random() * 3, 7, 1.1, 250, 250, 255, 1.2);
-        else this.spawn(ax, ay, 3, 30, 0.35, 150, 190, 235, 1, 0);
+        if (s.kind === 2) this.spawn(ax, ay, 4 + Math.random() * 3, 7, 1.1, 250, 250, 255, 2);
+        else this.spawn(ax, ay, 3, 34, 0.35, 150, 196, 240, 1.4, 0);
       }
     }
     void dt;
@@ -1229,6 +1171,27 @@ export class Renderer {
     this.fx = out;
   }
 
+  /** a name on a dark plate, so it reads over any ground */
+  private plate(text: string, x: number, y: number, size: number, color: string, bold: boolean, edge?: string): number {
+    const ctx = this.ctx;
+    const dpr = this.dpr;
+    ctx.font = `${bold ? 600 : 400} ${Math.round(size * dpr)}px "Pixelify Sans", "IBM Plex Sans", sans-serif`;
+    const tw = Math.ceil(ctx.measureText(text).width);
+    const padX = Math.round(4 * dpr),
+      h = Math.round((size + 5) * dpr);
+    const left = Math.round(x - tw / 2 - padX),
+      top = Math.round(y);
+    ctx.fillStyle = 'rgba(18,22,32,0.82)';
+    ctx.fillRect(left, top, tw + padX * 2, h);
+    if (edge) {
+      ctx.fillStyle = edge;
+      ctx.fillRect(left, top + h - Math.max(1, Math.round(2 * dpr)), tw + padX * 2, Math.max(1, Math.round(2 * dpr)));
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(text, Math.round(x), top + Math.round(2 * dpr));
+    return tw + padX * 2;
+  }
+
   private drawLabels(vr: { x0: number; y0: number; x1: number; y1: number }, zCss: number): void {
     const sim = this.sim;
     const ctx = this.ctx;
@@ -1236,7 +1199,6 @@ export class Renderer {
     const minPop = zCss > 1.1 ? 0 : zCss > 0.7 ? 60 : zCss > 0.45 ? 200 : 100000;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.lineJoin = 'round';
     for (const s of sim.settlements.values()) {
       if (!s.alive) continue;
       if (s.x < vr.x0 - 4 || s.x > vr.x1 + 4 || s.y < vr.y0 - 4 || s.y > vr.y1 + 4) continue;
@@ -1245,36 +1207,19 @@ export class Renderer {
       const capital = civ.capital === s.id;
       const pop = s.people.length;
       if (!capital && pop < minPop) continue;
-      const p = this.tileToScreen(s.x + 0.5, s.y + 0.5);
+      const p = this.tileToScreen(s.x + 0.5, s.y + 1.1);
       const x = p.x * dpr,
-        y = (p.y + Math.max(6, (Math.sqrt(s.urban.length) * 0.5 + 0.8) * TILE * zCss)) * dpr;
-      const size = Math.round((capital ? 13 : pop > 250 ? 12 : 11) * dpr);
-      ctx.font = `${capital ? 600 : 400} ${size}px "Pixelify Sans", "IBM Plex Sans", sans-serif`;
+        y = (p.y + Math.max(3, Math.sqrt(s.urban.length) * 0.35 * TILE * zCss)) * dpr;
       const text = zCss > 0.9 ? `${s.name} ${pop}` : s.name;
-      ctx.lineWidth = 3 * dpr;
-      ctx.strokeStyle = 'rgba(14,18,26,0.85)';
-      ctx.strokeText(text, x, y);
-      ctx.fillStyle = capital ? civCss(civ.color) : '#f1ecdc';
-      ctx.fillText(text, x, y);
-      if (capital) {
-        // a small crown of the realm's colour above the name
-        const tw = ctx.measureText(text).width;
-        ctx.fillStyle = civCss(civ.color);
-        const sx = x - tw / 2 - 9 * dpr,
-          sy = y + 3 * dpr;
-        ctx.fillRect(sx, sy + 3 * dpr, 7 * dpr, 3 * dpr);
-        ctx.fillRect(sx, sy, 1.6 * dpr, 4 * dpr);
-        ctx.fillRect(sx + 2.7 * dpr, sy - 1 * dpr, 1.6 * dpr, 5 * dpr);
-        ctx.fillRect(sx + 5.4 * dpr, sy, 1.6 * dpr, 4 * dpr);
-      }
+      const wPlate = this.plate(text, x, y, capital ? 13 : pop > 250 ? 12 : 11, '#f4efe0', capital, civCss(civ.color));
       // status pips: famine, plague, unrest
-      let px = x + ctx.measureText(text).width / 2 + 5 * dpr;
+      let px = x + wPlate / 2 + 3 * dpr;
       const pip = (col: string) => {
-        ctx.fillStyle = 'rgba(14,18,26,0.85)';
-        ctx.fillRect(px - 1 * dpr, y + 3 * dpr, 7 * dpr, 7 * dpr);
+        ctx.fillStyle = 'rgba(18,22,32,0.9)';
+        ctx.fillRect(px - 1 * dpr, y + 3 * dpr, 9 * dpr, 9 * dpr);
         ctx.fillStyle = col;
-        ctx.fillRect(px, y + 4 * dpr, 5 * dpr, 5 * dpr);
-        px += 8 * dpr;
+        ctx.fillRect(px + 1 * dpr, y + 5 * dpr, 5 * dpr, 5 * dpr);
+        px += 10 * dpr;
       };
       if (s.hungerMonths > 2) pip('#f0a35e');
       if (s.plague > 0) pip('#b58cf5');
@@ -1286,30 +1231,18 @@ export class Renderer {
         if (!civ.alive || civ.pop < 40) continue;
         const cap = sim.settlements.get(civ.capital);
         if (!cap) continue;
-        const p = this.tileToScreen(cap.x + 0.5, cap.y - 2.2);
-        ctx.font = `600 ${Math.round((civ.pop > 600 ? 15 : 12) * dpr)}px "Pixelify Sans", "IBM Plex Sans", sans-serif`;
-        const text = civ.name.toUpperCase();
-        ctx.lineWidth = 3.5 * dpr;
-        ctx.strokeStyle = 'rgba(14,18,26,0.8)';
-        ctx.strokeText(text, p.x * dpr, p.y * dpr);
-        ctx.fillStyle = civCss(civ.color);
-        ctx.fillText(text, p.x * dpr, p.y * dpr);
+        const p = this.tileToScreen(cap.x + 0.5, cap.y - 3);
+        this.plate(civ.name.toUpperCase(), p.x * dpr, p.y * dpr, civ.pop > 600 ? 15 : 12, civCss(civ.color), true);
       }
     }
     // armies: strength at a glance
     if (zCss > 0.8) {
-      ctx.font = `600 ${Math.round(10 * dpr)}px "IBM Plex Sans", sans-serif`;
       for (const a of sim.armies.values()) {
         if (a.x < vr.x0 || a.x > vr.x1 || a.y < vr.y0 || a.y > vr.y1) continue;
         const civ = sim.civs.get(a.civ);
         if (!civ) continue;
-        const p = this.tileToScreen(a.x + 0.5, a.y - 1.4);
-        const text = `${a.soldiers.length}`;
-        ctx.lineWidth = 3 * dpr;
-        ctx.strokeStyle = 'rgba(14,18,26,0.85)';
-        ctx.strokeText(text, p.x * dpr, p.y * dpr);
-        ctx.fillStyle = civCss(civ.color);
-        ctx.fillText(text, p.x * dpr, p.y * dpr);
+        const p = this.tileToScreen(a.x + 0.5, a.y - 2.6);
+        this.plate(String(a.soldiers.length), p.x * dpr, p.y * dpr, 10, civCss(civ.color), true);
       }
     }
   }
