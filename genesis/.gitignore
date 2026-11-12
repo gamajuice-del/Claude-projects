@@ -1,0 +1,4 @@
+node_modules/
+dist/test.mjs
+dist/soak.mjs
+dist/*.map

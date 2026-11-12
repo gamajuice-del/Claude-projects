@@ -1,0 +1,17 @@
+{
+  "name": "genesis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Project Genesis - a living-world god simulation sandbox",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node build.mjs --test && node dist/test.mjs",
+    "soak": "node build.mjs --test && node dist/soak.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  }
+}
