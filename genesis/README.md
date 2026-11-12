@@ -189,7 +189,7 @@ Stated plainly, so nothing is mistaken for more than it is:
 - **Soldiers on campaign do not age** until they come home (campaigns are short relative to lifetimes).
 - **Federations** exist as defensive alliances and as acts of union that merge two states of one culture; there are no multi-tier federal constitutions.
 - **Late eras are thin.** Industrial-to-atomic technologies change production, health, transport, emissions and the look of cities, but there are no aircraft, nuclear weapons or space.
-- **File export** uses a normal browser download; embedded viewers that block downloads can still use the in-browser save slots.
+- **Saves are per browser.** Slots live in the browser that made them; moving a world between devices means exporting and importing a file.
 
 ## Ideas for later
 

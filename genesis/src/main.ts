@@ -110,10 +110,31 @@ class GameImpl implements Game {
 
   exportFile(): void {
     const s = this.sim;
+    const stem = `genesis-seed${s.world.seed}-year${Math.floor(s.tick / TICKS_PER_YEAR) + 1}`;
+    const host = (window as unknown as { claude?: { use?: (name: string) => Promise<unknown> } }).claude;
+    if (host && typeof host.use === 'function') {
+      // hosted page: files are handed over through the viewer, who confirms the save
+      const json = serialize(s);
+      host
+        .use('downloads')
+        .then((dl) => {
+          const d = dl as { save?: (r: { filename: string; data: Blob }) => Promise<unknown> } | null;
+          if (!d || !d.save) {
+            this.ui.toast('This viewer cannot save files. Use a save slot instead.');
+            return;
+          }
+          return d.save({ filename: stem + '.json', data: new Blob([json]) }).then(
+            () => this.ui.toast('World exported.'),
+            (e: { code?: string }) => this.ui.toast(e && e.code === 'declined' ? 'Export cancelled.' : e && e.code === 'rate_limited' ? 'A save prompt is already open.' : 'This viewer cannot save files. Use a save slot instead.'),
+          );
+        })
+        .catch(() => this.ui.toast('This viewer cannot save files. Use a save slot instead.'));
+      return;
+    }
     gzip(serialize(s))
       .then((blob) => {
-        download(`genesis-seed${s.world.seed}-year${Math.floor(s.tick / TICKS_PER_YEAR) + 1}.genesis`, blob);
-        this.ui.toast('Export started. If nothing downloads, this viewer blocks file saving — use a slot instead.');
+        download(stem + '.genesis', blob);
+        this.ui.toast('World exported to your downloads.');
       })
       .catch(() => this.ui.toast('Could not export.'));
   }
