@@ -1,0 +1,1256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mimic Voice Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<style>
+/* Layout: a lab bench. Record and Train side by side, Speak below them, then the tape library. */
+:root {
+  --bg: #eceff3;
+  --panel: #ffffff;
+  --ink: #131922;
+  --muted: #5a6472;
+  --line: #d3d9e1;
+  --soft: #f4f6f9;
+  --rec: #d92f48;
+  --model: #2c55e0;
+  --ok: #18835a;
+  --warn: #a8670f;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1217; --panel: #161b22; --ink: #e5e9ef; --muted: #96a0ad; --line: #29303a; --soft: #1c222b;
+    --rec: #ff5a6e; --model: #7d98ff; --ok: #3fc08a; --warn: #e0a13f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1217; --panel: #161b22; --ink: #e5e9ef; --muted: #96a0ad; --line: #29303a; --soft: #1c222b;
+  --rec: #ff5a6e; --model: #7d98ff; --ok: #3fc08a; --warn: #e0a13f; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 15px/1.55 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+.mono, dd, output, .tag, .when { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.label { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.note { color: var(--muted); font-size: 13.5px; margin: 0; }
+.note.warn { color: var(--warn); }
+
+/* header */
+.top { padding-block: 34px 22px; }
+.top .wrap { display: flex; flex-wrap: wrap; gap: 24px 40px; align-items: end; justify-content: space-between; }
+.brand { max-width: 560px; min-width: 0; }
+.brand h1 { font-size: clamp(40px, 6vw, 60px); line-height: .95; letter-spacing: -.02em; font-weight: 700; display: flex; align-items: center; gap: 14px; }
+.brand h1 svg { width: .8em; height: .8em; flex: none; }
+.brand p { margin: 12px 0 0; color: var(--muted); font-size: 16px; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.steps li {
+  display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center;
+  padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); min-width: 128px;
+}
+.steps .n { grid-row: span 2; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 600 13px var(--font-mono); border: 1.5px solid var(--line); color: var(--muted); }
+.steps b { font-weight: 600; font-size: 14px; }
+.steps li span:last-child { font: 12px var(--font-mono); color: var(--muted); }
+.steps li.done .n { background: var(--ok); border-color: var(--ok); color: var(--panel); }
+.steps li.active .n { border-color: var(--model); color: var(--model); }
+
+/* grid */
+main.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-bottom: 60px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.panel.wide { grid-column: 1 / -1; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.panel-head h2 { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+@media (max-width: 820px) { main.grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* controls */
+button, .btnlike {
+  font: 600 14px var(--font-body); color: var(--panel); background: var(--ink);
+  border: 1px solid var(--ink); border-radius: 8px; padding: 9px 14px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 8px; line-height: 1.2;
+}
+button:hover:not(:disabled), .btnlike:hover { filter: brightness(1.15); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.secondary { background: var(--model); border-color: var(--model); color: #fff; }
+button.ghost, .btnlike.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+button.ghost:hover:not(:disabled), .btnlike.ghost:hover { background: var(--soft); filter: none; }
+button.danger { color: var(--rec); }
+button.small, .btnlike.small { padding: 6px 10px; font-size: 13px; }
+:focus-visible { outline: 2.5px solid var(--model); outline-offset: 2px; }
+select, textarea, input[type=text] {
+  font: 15px var(--font-body); color: var(--ink); background: var(--soft);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%;
+}
+select { width: auto; padding: 6px 8px; font-size: 13.5px; }
+textarea { resize: vertical; line-height: 1.45; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
+.check input { accent-color: var(--model); width: 16px; height: 16px; }
+
+/* record */
+.prompt { background: var(--soft); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 4px; }
+.prompt p { margin: 0; font: 500 19px/1.35 var(--font-display); }
+.prompt .row { justify-content: space-between; }
+.recorder { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.rec-btn {
+  background: var(--rec); border-color: var(--rec); color: #fff; font-size: 16px;
+  padding: 14px 22px 14px 18px; border-radius: 999px; min-width: 150px; justify-content: center;
+}
+.rec-btn .dot { width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: border-radius .15s; }
+.rec-btn[aria-pressed="true"] .dot { border-radius: 3px; }
+.rec-btn[aria-pressed="true"] { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--rec) 45%, transparent); } 50% { box-shadow: 0 0 0 10px transparent; } }
+@media (prefers-reduced-motion: reduce) { .rec-btn[aria-pressed="true"] { animation: none; } }
+.meter { flex: 1; min-width: 160px; display: flex; align-items: center; gap: 12px; }
+.meter canvas { flex: 1; height: 44px; min-width: 0; width: 100%; border-radius: 6px; background: var(--soft); }
+.meter span { font-size: 14px; color: var(--muted); }
+.live {
+  min-height: 92px; border: 1px dashed var(--line); border-radius: var(--radius); padding: 12px 14px;
+  font-size: 17px; line-height: 1.5; overflow-wrap: anywhere;
+}
+.live .interim { color: var(--muted); }
+.live .placeholder { color: var(--muted); font-size: 15px; }
+
+/* train */
+.pill { font: 600 12px var(--font-mono); letter-spacing: .04em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.pill.on { color: var(--model); border-color: var(--model); background: color-mix(in srgb, var(--model) 10%, transparent); }
+.stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.stats div { background: var(--panel); padding: 10px 12px; min-width: 0; }
+.stats dt { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.stats dd { margin: 2px 0 0; font-size: 17px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 520px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+canvas.chart { width: 100%; height: 150px; display: block; }
+.progress { height: 4px; background: var(--soft); border-radius: 2px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--model); transition: width .2s; }
+
+/* speak */
+.controls { display: flex; flex-wrap: wrap; gap: 10px 28px; }
+.controls label { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+.controls input[type=range] { accent-color: var(--model); width: 140px; }
+.controls output { color: var(--ink); min-width: 48px; font-size: 13px; }
+figure { margin: 0; display: grid; gap: 6px; }
+figcaption { font-size: 12.5px; color: var(--muted); }
+.specbox { background: #0b0d17; border-radius: var(--radius); overflow-x: auto; }
+.specbox canvas { display: block; height: 160px; }
+#outSpec { width: 100%; }
+.speak-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px; align-items: start; }
+.speak-grid > div { display: grid; gap: 12px; min-width: 0; }
+@media (max-width: 820px) { .speak-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* library */
+.clips { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.clip { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 8px; background: var(--panel); min-width: 0; }
+.clip.selected { border-color: var(--model); box-shadow: 0 0 0 1px var(--model); }
+.clip-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.when { font-size: 12.5px; color: var(--muted); }
+.tag { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.tag.ok { color: var(--ok); }
+.tag.warn { color: var(--warn); }
+.clip audio { width: 100%; height: 36px; }
+.clip textarea { font-size: 14px; background: var(--soft); }
+.clip-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.empty { border: 1px dashed var(--line); border-radius: var(--radius); padding: 22px; text-align: center; color: var(--muted); }
+
+/* how */
+.how ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 75ch; }
+.how li::marker { font-family: var(--font-mono); color: var(--muted); }
+.how p { margin: 0; max-width: 75ch; }
+.banner { border: 1px solid var(--warn); color: var(--warn); background: color-mix(in srgb, var(--warn) 9%, transparent); border-radius: var(--radius); padding: 10px 14px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>
+        <svg viewBox="0 0 32 32" aria-hidden="true"><g fill="currentColor"><rect x="1" y="12" width="4" height="8" rx="2"/><rect x="8" y="6" width="4" height="20" rx="2"/><rect x="15" y="1" width="4" height="30" rx="2" style="fill:var(--rec)"/><rect x="22" y="8" width="4" height="16" rx="2"/><rect x="29" y="13" width="3" height="6" rx="1.5"/></g></svg>
+        Mimic
+      </h1>
+      <p>Talk into it. Every recording becomes training data for a neural network that learns your voice from zero, entirely in this browser. Then type anything and hear what it learned.</p>
+    </div>
+    <ol class="steps" aria-label="Progress">
+      <li id="stepRec"><span class="n">1</span><b>Record</b><span id="stepRecVal">0 clips</span></li>
+      <li id="stepTrain"><span class="n">2</span><b>Train</b><span id="stepTrainVal">0 epochs</span></li>
+      <li id="stepSpeak"><span class="n">3</span><b>Speak</b><span id="stepSpeakVal">locked</span></li>
+    </ol>
+  </div>
+</header>
+
+<main class="wrap grid">
+  <div class="banner" id="envBanner" hidden style="grid-column:1/-1"></div>
+
+  <section class="panel" id="recordPanel" aria-labelledby="recH">
+    <div class="panel-head">
+      <h2 id="recH">Record</h2>
+      <label class="row muted" style="font-size:13px;gap:6px">Language
+        <select id="lang">
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="es-ES">Español</option>
+          <option value="fr-FR">Français</option>
+          <option value="de-DE">Deutsch</option>
+          <option value="it-IT">Italiano</option>
+          <option value="pt-BR">Português (BR)</option>
+          <option value="nl-NL">Nederlands</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="prompt">
+      <span class="label">Try reading this out loud</span>
+      <p id="promptText"></p>
+      <div class="row"><span class="note">Short sentences of 2 to 6 seconds train best.</span><button id="nextPrompt" class="ghost small" type="button">Another sentence</button></div>
+    </div>
+
+    <div class="recorder">
+      <button id="recBtn" class="rec-btn" type="button" aria-pressed="false"><span class="dot"></span><span id="recLabel">Record</span></button>
+      <div class="meter"><canvas id="meterCanvas" aria-hidden="true"></canvas><span id="recTime" class="mono">0:00</span></div>
+    </div>
+
+    <div class="live" id="liveText" aria-live="polite"><span class="placeholder">Press Record and speak. Your words appear here as you talk.</span></div>
+    <p class="note" id="recNote" hidden></p>
+
+    <div class="row" style="justify-content:space-between">
+      <label class="check"><input type="checkbox" id="autoTrain" checked> Train automatically after each recording</label>
+      <label class="btnlike ghost small" for="fileIn">Add an audio file
+        <input type="file" id="fileIn" accept="audio/*" multiple hidden>
+      </label>
+    </div>
+  </section>
+
+  <section class="panel" id="trainPanel" aria-labelledby="trainH">
+    <div class="panel-head">
+      <h2 id="trainH">Train</h2>
+      <span class="pill" id="trainPill">Idle</span>
+    </div>
+    <dl class="stats">
+      <div><dt>Clips</dt><dd id="statClips">0</dd></div>
+      <div><dt>Audio</dt><dd id="statAudio">0 s</dd></div>
+      <div><dt>Frames</dt><dd id="statFrames">0</dd></div>
+      <div><dt>Epochs</dt><dd id="statEpochs">0</dd></div>
+      <div><dt>Loss</dt><dd id="statLoss">–</dd></div>
+    </dl>
+    <figure>
+      <canvas id="lossCanvas" class="chart" aria-label="Training loss per epoch"></canvas>
+      <figcaption>Training loss per epoch, log scale. Lower means the predicted spectrogram is closer to your real audio.</figcaption>
+    </figure>
+    <div class="progress" aria-hidden="true"><i id="progBar"></i></div>
+    <div class="row">
+      <button id="train20" type="button">Train 20 epochs</button>
+      <button id="trainLoop" class="secondary" type="button">Train continuously</button>
+      <button id="resetModel" class="ghost danger" type="button">Reset model</button>
+    </div>
+    <p class="note" id="trainMsg">The model starts empty. Record a clip and it begins learning.</p>
+  </section>
+
+  <section class="panel wide" id="speakPanel" aria-labelledby="speakH">
+    <div class="panel-head">
+      <h2 id="speakH">Speak</h2>
+      <span class="note" id="speakHint">Locked until the model has trained at least one epoch.</span>
+    </div>
+    <div class="speak-grid">
+      <div>
+        <label class="label" for="ttsInput">Type anything</label>
+        <textarea id="ttsInput" rows="4">Hello, this is my voice, learned from scratch.</textarea>
+        <div class="controls">
+          <label for="speed">Speed <input type="range" id="speed" min="0.6" max="1.6" step="0.05" value="1"><output id="speedOut" for="speed">1.00×</output></label>
+          <label for="clarity">Clarity <input type="range" id="clarity" min="1" max="1.8" step="0.05" value="1.3"><output id="clarityOut" for="clarity">1.30</output></label>
+        </div>
+        <div class="row">
+          <button id="speakBtn" class="secondary" type="button" disabled>Generate and play</button>
+          <button id="replayBtn" class="ghost" type="button" hidden>Play again</button>
+          <a id="wavLink" class="btnlike ghost" hidden download="mimic.wav">Download WAV</a>
+        </div>
+        <p class="note" id="speakMsg"></p>
+      </div>
+      <figure>
+        <div class="specbox"><canvas id="outSpec" width="600" height="128"></canvas></div>
+        <figcaption>Spectrogram the network predicted for your text: time runs left to right, pitch rises upward, brighter is louder. Griffin-Lim turns it into sound.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="panel wide" id="libraryPanel" aria-labelledby="libH">
+    <div class="panel-head">
+      <h2 id="libH">Your recordings</h2>
+      <span class="note" id="libCount"></span>
+    </div>
+    <figure id="alignFig" hidden>
+      <div class="specbox"><canvas id="alignSpec" height="180"></canvas></div>
+      <figcaption id="alignCap"></figcaption>
+    </figure>
+    <ul class="clips" id="clipList"></ul>
+    <div class="empty" id="clipEmpty">No recordings yet. Everything you record is kept in this browser, along with its transcript.</div>
+  </section>
+
+  <section class="panel wide how" aria-labelledby="howH">
+    <h2 id="howH">How it works</h2>
+    <ol>
+      <li>While you talk, the browser's speech recognizer writes the transcript and a MediaRecorder keeps the raw audio. Both are stored in this browser's IndexedDB. The page uploads nothing, though Chrome's recognizer may process speech on Google's servers.</li>
+      <li>Each clip is resampled to 16 kHz, trimmed of silence, loudness-matched and turned into a log-magnitude spectrogram: one frame every 10 ms, 257 frequency bins each.</li>
+      <li>The acoustic network reads one letter at a time, plus three letters either side and the position inside the letter, and predicts one spectrogram frame. A second small network learns how many frames each letter lasts.</li>
+      <li>Nobody tells it where each letter sits in the audio. It starts by spreading letters evenly across the clip. After 30 epochs it re-aligns every clip with monotonic alignment search, using its own predictions, and keeps refining that as it trains. Pick a clip below to watch the alignment move.</li>
+      <li>To speak, it predicts durations and spectrogram frames for your text, and the Griffin-Lim algorithm estimates the missing phase to turn the spectrogram back into a waveform.</li>
+    </ol>
+    <p class="note">What to expect: with a few clips you get a hum in your tone and rhythm. After 20 or more clips and a few hundred epochs, syllables form. More varied sentences, a quiet room and the same microphone each time help the most. It's a tiny model trained on minutes of audio, so expect a mumbly, whispery version of you, not studio speech.</p>
+  </section>
+</main>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* ============================================================
+   Constants
+   ============================================================ */
+const SR = 16000, NFFT = 512, HOP = 160, BINS = NFFT / 2 + 1;
+const CTX = 3, WIN = CTX * 2 + 1, AUX = 7;
+const LOG_EPS = 1e-3, Z_MEAN = -2, Z_STD = 2.5;
+const REALIGN_AFTER = 30, ALIGN_PRIOR = 6;
+const MAX_REC_SEC = 30;
+const AC_KEY = 'indexeddb://mimic-acoustic', DUR_KEY = 'indexeddb://mimic-duration';
+const VOCAB = ['#', ' ', ...'abcdefghijklmnopqrstuvwxyz', "'", ',', '.', '?', '!', '-'];
+const CHAR_ID = new Map(VOCAB.map((c, i) => [c, i]));
+const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const PROMPTS = [
+  'The birch canoe slid on the smooth planks.',
+  'Glue the sheet to the dark blue background.',
+  "It's easy to tell the depth of a well.",
+  'These days a chicken leg is a rare dish.',
+  'Rice is often served in round bowls.',
+  'The juice of lemons makes fine punch.',
+  'The box was thrown beside the parked truck.',
+  'Four hours of steady work faced us.',
+  'A large size in stockings is hard to sell.',
+  'The boy was there when the sun rose.',
+  'A rod is used to catch pink salmon.',
+  'The source of the huge river is the clear spring.',
+  'Kick the ball straight and follow through.',
+  'Help the woman get back to her feet.',
+  'A pot of tea helps to pass the evening.',
+  'Smoky fires lack flame and heat.',
+  "The soft cushion broke the man's fall.",
+  'The salt breeze came across from the sea.',
+  'The girl at the booth sold fifty bonds.',
+  'The small pup gnawed a hole in the sock.',
+  'The fish twisted and turned on the bent hook.',
+  'Press the pants and sew a button on the vest.',
+  'The swan dive was far short of perfect.',
+  'The beauty of the view stunned the young boy.',
+  'Two blue fish swam in the tank.',
+  'Her purse was full of useless trash.',
+  'The colt reared and threw the tall rider.',
+  'It snowed, rained, and hailed the same morning.',
+  'Read verse out loud for pleasure.',
+  'Hoist the load to your left shoulder.',
+  'Take the winding path to reach the lake.',
+  'Note closely the size of the gas tank.',
+  'Wipe the grease off his dirty face.',
+  'Mend the coat before you go out.',
+  'The wrist was badly strained and hung limp.',
+  'The stray cat gave birth to kittens.',
+  'The young girl gave no clear response.',
+  'The meal was cooked before the bell rang.',
+  'What joy there is in living?',
+  'A king ruled the state in the early days.'
+];
+
+/* ============================================================
+   Text
+   ============================================================ */
+function normalizeText(s) {
+  s = (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  s = s.replace(/[0-9]/g, d => ' ' + DIGITS[+d] + ' ');
+  s = s.replace(/[‘’`]/g, "'").replace(/[–—]/g, '-').replace(/[;:]/g, ',').replace(/&/g, ' and ');
+  s = [...s].map(c => (c !== '#' && CHAR_ID.has(c)) ? c : ' ').join('');
+  s = s.replace(/\s+/g, ' ').replace(/\s+([,.?!])/g, '$1').replace(/([,.?!])\1+/g, '$1');
+  s = s.replace(/^[\s,.?!'-]+|[\s,.?!'-]+$/g, '');
+  return s;
+}
+const textToIds = s => [...s].map(c => CHAR_ID.get(c));
+const joinText = (a, b) => (a + ' ' + b).replace(/\s+/g, ' ').trim();
+
+function charWeight(c) {
+  if (c === ' ') return 0.6;
+  if (',.?!'.includes(c)) return 2.5;
+  if ("-'".includes(c)) return 0.5;
+  if ('aeiouy'.includes(c)) return 1.4;
+  return 1;
+}
+// Spread T frames over the characters, proportional to weights, each at least 1.
+function distribute(T, weights) {
+  const N = weights.length, sum = weights.reduce((a, b) => a + b, 0), free = T - N;
+  const raw = weights.map(w => w / sum * free);
+  const d = raw.map(x => 1 + Math.floor(x));
+  const left = T - d.reduce((a, b) => a + b, 0);
+  const order = raw.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0]);
+  for (let k = 0; k < left; k++) d[order[k % N][1]]++;
+  return d;
+}
+
+/* ============================================================
+   DSP: FFT, STFT, inverse STFT, Griffin-Lim
+   ============================================================ */
+const HANN = new Float32Array(NFFT);
+for (let i = 0; i < NFFT; i++) HANN[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / NFFT);
+
+const fft = (() => {
+  const n = NFFT, levels = Math.log2(n);
+  const rev = new Uint16Array(n);
+  for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < levels; b++) r |= ((i >> b) & 1) << (levels - 1 - b); rev[i] = r; }
+  const cs = new Float32Array(n / 2), sn = new Float32Array(n / 2);
+  for (let i = 0; i < n / 2; i++) { cs[i] = Math.cos(2 * Math.PI * i / n); sn[i] = Math.sin(2 * Math.PI * i / n); }
+  return function (re, im, inverse) {
+    for (let i = 0; i < n; i++) {
+      const j = rev[i];
+      if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+    }
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1, step = n / size;
+      for (let i = 0; i < n; i += size) {
+        for (let j = 0; j < half; j++) {
+          const k = j * step, wr = cs[k], wi = inverse ? sn[k] : -sn[k];
+          const a = i + j, b = a + half;
+          const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+          re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        }
+      }
+    }
+    if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+  };
+})();
+
+const _fr = new Float32Array(NFFT), _fi = new Float32Array(NFFT);
+function stft(x) {
+  const F = Math.max(1, Math.floor((x.length - NFFT) / HOP) + 1);
+  const re = new Float32Array(F * BINS), im = new Float32Array(F * BINS);
+  for (let f = 0; f < F; f++) {
+    const o = f * HOP;
+    for (let i = 0; i < NFFT; i++) { _fr[i] = (x[o + i] || 0) * HANN[i]; _fi[i] = 0; }
+    fft(_fr, _fi, false);
+    re.set(_fr.subarray(0, BINS), f * BINS); im.set(_fi.subarray(0, BINS), f * BINS);
+  }
+  return { re, im, F };
+}
+function istft(re, im, F) {
+  const L = (F - 1) * HOP + NFFT, y = new Float32Array(L), ws = new Float32Array(L);
+  for (let f = 0; f < F; f++) {
+    const o = f * BINS;
+    for (let k = 0; k < BINS; k++) { _fr[k] = re[o + k]; _fi[k] = im[o + k]; }
+    _fi[0] = 0; _fi[NFFT / 2] = 0;
+    for (let k = 1; k < NFFT / 2; k++) { _fr[NFFT - k] = _fr[k]; _fi[NFFT - k] = -_fi[k]; }
+    fft(_fr, _fi, true);
+    const s = f * HOP;
+    for (let i = 0; i < NFFT; i++) { y[s + i] += _fr[i] * HANN[i]; ws[s + i] += HANN[i] * HANN[i]; }
+  }
+  for (let i = 0; i < L; i++) if (ws[i] > 1e-4) y[i] /= ws[i];
+  return y;
+}
+// Fast Griffin-Lim (Perraudin et al.) with momentum.
+async function griffinLim(mag, F, iters, onProgress) {
+  const n = F * BINS, re = new Float32Array(n), im = new Float32Array(n);
+  const pr = new Float32Array(n), pi = new Float32Array(n), alpha = 0.99 / 1.99;
+  for (let j = 0; j < n; j++) { const a = Math.random() * 2 * Math.PI; re[j] = mag[j] * Math.cos(a); im[j] = mag[j] * Math.sin(a); }
+  for (let it = 0; it < iters; it++) {
+    const s = stft(istft(re, im, F));
+    for (let j = 0; j < n; j++) {
+      const ar = s.re[j] - alpha * pr[j], ai = s.im[j] - alpha * pi[j];
+      pr[j] = s.re[j]; pi[j] = s.im[j];
+      const m = Math.hypot(ar, ai) || 1;
+      re[j] = mag[j] * ar / m; im[j] = mag[j] * ai / m;
+    }
+    if (it % 6 === 5) { onProgress?.(it / iters); await new Promise(r => setTimeout(r, 0)); }
+  }
+  const y = istft(re, im, F);
+  return y.subarray(NFFT / 2, y.length - NFFT / 2);
+}
+
+/* ============================================================
+   Audio decoding and features
+   ============================================================ */
+let _ctx = null;
+const audioCtx = () => (_ctx ||= new (window.AudioContext || window.webkitAudioContext)());
+
+async function decodeToMono16k(blob) {
+  const audio = await audioCtx().decodeAudioData(await blob.arrayBuffer());
+  const len = Math.max(1, Math.ceil(audio.duration * SR));
+  const off = new OfflineAudioContext(1, len, SR);
+  const src = off.createBufferSource();
+  src.buffer = audio; src.connect(off.destination); src.start();
+  const out = await off.startRendering();
+  return out.getChannelData(0).slice();
+}
+
+// Trim silence, match loudness, return the normalized log spectrogram.
+function analyze(sig) {
+  const nF = Math.floor((sig.length - NFFT) / HOP) + 1;
+  if (nF < 8) return null;
+  const db = new Float32Array(nF); let max = -200;
+  for (let f = 0; f < nF; f++) {
+    let s = 0; const o = f * HOP;
+    for (let i = 0; i < NFFT; i++) { const v = sig[o + i]; s += v * v; }
+    db[f] = 10 * Math.log10(s / NFFT + 1e-12); if (db[f] > max) max = db[f];
+  }
+  const thr = max - 38;
+  let first = 0, last = nF - 1;
+  while (first < nF && db[first] < thr) first++;
+  while (last > first && db[last] < thr) last--;
+  let e = 0, cnt = 0;
+  for (let f = first; f <= last; f++) if (db[f] >= thr) { e += Math.pow(10, db[f] / 10); cnt++; }
+  const gain = 0.08 / Math.sqrt(e / Math.max(1, cnt) + 1e-12);
+  const start = Math.max(0, first - 3), end = Math.min(nF - 1, last + 3);
+  const seg = sig.slice(start * HOP, end * HOP + NFFT);
+  for (let i = 0; i < seg.length; i++) seg[i] *= gain;
+  const { re, im, F } = stft(seg);
+  const feat = new Float32Array(F * BINS);
+  for (let j = 0; j < feat.length; j++) feat[j] = (Math.log(Math.hypot(re[j], im[j]) + LOG_EPS) - Z_MEAN) / Z_STD;
+  return { feat, T: F };
+}
+
+/* ============================================================
+   Storage (IndexedDB for clips, localStorage for training stats)
+   ============================================================ */
+const DB_NAME = 'mimic-voice-lab', STORE = 'clips';
+let _db = null;
+function db() {
+  if (_db) return _db;
+  _db = new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return _db;
+}
+async function dbTx(mode, fn) {
+  const d = await db();
+  return new Promise((res, rej) => {
+    const tx = d.transaction(STORE, mode), store = tx.objectStore(STORE);
+    const req = fn(store);
+    tx.oncomplete = () => res(req?.result);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+const dbAll = () => dbTx('readonly', s => s.getAll());
+const dbDelete = id => dbTx('readwrite', s => s.delete(id));
+const toRecord = c => ({ id: c.id, created: c.created, text: c.text, blob: c.blob, seconds: c.seconds, durs: c.durs || null, name: c.name || null });
+const dbPut = c => dbTx('readwrite', s => s.put(toRecord(c))).catch(e => console.warn('save failed', e));
+
+function loadState() {
+  try { const s = JSON.parse(localStorage.getItem('mimic-state')); if (s && typeof s.epochs === 'number') return s; } catch {}
+  return { epochs: 0, losses: [] };
+}
+function saveState() {
+  try { state.losses = state.losses.slice(-3000); localStorage.setItem('mimic-state', JSON.stringify(state)); } catch {}
+}
+const state = loadState();
+
+/* ============================================================
+   Clips
+   ============================================================ */
+const clips = [];
+let selectedId = null;
+
+async function prepareClip(c) {
+  try {
+    const sig = await decodeToMono16k(c.blob);
+    c.seconds = sig.length / SR;
+    const a = analyze(sig);
+    c.feat = a ? a.feat : null; c.T = a ? a.T : 0;
+    if (!a) c.problem = 'Too short to use';
+  } catch (e) {
+    c.feat = null; c.T = 0; c.problem = 'Could not decode this audio';
+  }
+  setClipText(c, c.text || '');
+}
+function setClipText(c, text) {
+  const changed = c.text !== text;
+  c.text = text;
+  c.norm = normalizeText(text);
+  c.ids = textToIds(c.norm);
+  const ok = clipUsable(c);
+  const sumOk = c.durs && c.durs.length === c.ids.length && c.durs.reduce((a, b) => a + b, 0) === c.T;
+  if (!ok) c.durs = null;
+  else if (changed || !sumOk) c.durs = distribute(c.T, [...c.norm].map(charWeight));
+}
+const clipUsable = c => !!c.feat && c.ids && c.ids.length > 0 && c.T >= c.ids.length * 2;
+function clipStatus(c) {
+  if (c.problem) return [c.problem, 'warn'];
+  if (!c.ids || !c.ids.length) return ['Needs a transcript', 'warn'];
+  if (!clipUsable(c)) return ['Audio too short for this text', 'warn'];
+  return ['In training', 'ok'];
+}
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+async function addClip(blob, text, name) {
+  const c = { id: newId(), created: Date.now(), text: '', blob, seconds: 0, durs: null, name: name || null };
+  c.text = text;
+  await prepareClip(c);
+  clips.push(c);
+  await dbPut(c);
+  selectedId = c.id;
+  renderClips(); updateStats();
+  return c;
+}
+
+/* ============================================================
+   Models
+   ============================================================ */
+let acoustic = null, durModel = null;
+
+function buildAcoustic() {
+  const ids = tf.input({ shape: [WIN], dtype: 'int32', name: 'chars' });
+  const aux = tf.input({ shape: [AUX], name: 'timing' });
+  let e = tf.layers.embedding({ inputDim: VOCAB.length, outputDim: 24 }).apply(ids);
+  e = tf.layers.flatten().apply(e);
+  let h = tf.layers.concatenate().apply([e, aux]);
+  h = tf.layers.dense({ units: 512, activation: 'relu' }).apply(h);
+  h = tf.layers.dense({ units: 512, activation: 'relu' }).apply(h);
+  h = tf.layers.dense({ units: 384, activation: 'relu' }).apply(h);
+  const out = tf.layers.dense({ units: BINS }).apply(h);
+  return tf.model({ inputs: [ids, aux], outputs: out });
+}
+function buildDuration() {
+  const ids = tf.input({ shape: [WIN], dtype: 'int32', name: 'chars' });
+  let e = tf.layers.embedding({ inputDim: VOCAB.length, outputDim: 16 }).apply(ids);
+  e = tf.layers.flatten().apply(e);
+  let h = tf.layers.dense({ units: 128, activation: 'relu' }).apply(e);
+  h = tf.layers.dense({ units: 64, activation: 'relu' }).apply(h);
+  const out = tf.layers.dense({ units: 1 }).apply(h);
+  return tf.model({ inputs: ids, outputs: out });
+}
+async function ensureModels() {
+  if (acoustic && durModel) return;
+  let saved = {};
+  try { saved = await tf.io.listModels(); } catch {}
+  if (saved[AC_KEY] && saved[DUR_KEY]) {
+    try { acoustic = await tf.loadLayersModel(AC_KEY); durModel = await tf.loadLayersModel(DUR_KEY); }
+    catch (e) { console.warn('could not load saved model', e); acoustic = durModel = null; }
+  }
+  if (!acoustic || !durModel) {
+    acoustic = buildAcoustic(); durModel = buildDuration();
+    if (state.epochs) { state.epochs = 0; state.losses = []; saveState(); }
+  }
+  acoustic.compile({ optimizer: tf.train.adam(1e-3), loss: 'meanSquaredError' });
+  durModel.compile({ optimizer: tf.train.adam(3e-3), loss: 'meanSquaredError' });
+}
+async function saveModels() {
+  try { await acoustic.save(AC_KEY); await durModel.save(DUR_KEY); }
+  catch (e) { console.warn('model save failed', e); }
+}
+
+// One input row: the letter window plus where we are inside the letter and the clip.
+function fillRow(ids, aux, r, seq, i, p, u, d) {
+  for (let w = -CTX; w <= CTX; w++) { const j = i + w; ids[r * WIN + w + CTX] = (j >= 0 && j < seq.length) ? seq[j] : 0; }
+  const o = r * AUX;
+  aux[o] = p; aux[o + 1] = Math.sin(Math.PI * p); aux[o + 2] = Math.cos(Math.PI * p);
+  aux[o + 3] = Math.sin(2 * Math.PI * p); aux[o + 4] = Math.cos(2 * Math.PI * p);
+  aux[o + 5] = u; aux[o + 6] = Math.log(d) / 3;
+}
+function buildFrameData(list) {
+  let F = 0; for (const c of list) F += c.T;
+  const ids = new Int32Array(F * WIN), aux = new Float32Array(F * AUX), y = new Float32Array(F * BINS);
+  let r = 0;
+  for (const c of list) {
+    let t = 0;
+    for (let i = 0; i < c.ids.length; i++) {
+      const d = c.durs[i];
+      for (let k = 0; k < d; k++, t++, r++) {
+        fillRow(ids, aux, r, c.ids, i, (k + 0.5) / d, t / c.T, d);
+        y.set(c.feat.subarray(t * BINS, (t + 1) * BINS), r * BINS);
+      }
+    }
+  }
+  return { ids, aux, y, F };
+}
+
+// Monotonic alignment search: find the letter-to-frame path the model explains best.
+async function realignClip(c) {
+  const N = c.ids.length, T = c.T;
+  const ids = new Int32Array(N * WIN), aux = new Float32Array(N * AUX);
+  let t = 0;
+  for (let i = 0; i < N; i++) { fillRow(ids, aux, i, c.ids, i, 0.5, (t + c.durs[i] / 2) / T, c.durs[i]); t += c.durs[i]; }
+  const costT = tf.tidy(() => {
+    const P = acoustic.predict([tf.tensor2d(ids, [N, WIN], 'int32'), tf.tensor2d(aux, [N, AUX])]);
+    const X = tf.tensor2d(c.feat, [T, BINS]);
+    const pn = P.square().sum(1, true), xn = X.square().sum(1).reshape([1, T]);
+    return pn.add(xn).sub(P.matMul(X, false, true).mul(2)).div(BINS);
+  });
+  const C = await costT.data(); costT.dispose();
+  const Q = new Float32Array(N * T).fill(Infinity), B = new Uint8Array(N * T);
+  const prior = (i, tt) => { const d = tt / T - (i + 0.5) / N; return ALIGN_PRIOR * d * d; };
+  Q[0] = C[0] + prior(0, 0);
+  for (let tt = 1; tt < T; tt++) Q[tt] = Q[tt - 1] + C[tt] + prior(0, tt);
+  for (let i = 1; i < N; i++) {
+    const row = i * T, up = (i - 1) * T;
+    for (let tt = i; tt < T; tt++) {
+      const stay = Q[row + tt - 1], adv = Q[up + tt - 1];
+      const c0 = C[row + tt] + prior(i, tt);
+      if (adv <= stay) { Q[row + tt] = adv + c0; B[row + tt] = 1; } else { Q[row + tt] = stay + c0; }
+    }
+  }
+  const durs = new Array(N).fill(0);
+  let i = N - 1;
+  for (let tt = T - 1; tt >= 0; tt--) { durs[i]++; if (B[i * T + tt] === 1) i--; }
+  if (i === 0 && durs.every(d => d >= 1)) c.durs = durs;
+}
+
+async function trainDuration(list, epochs) {
+  let M = 0; for (const c of list) M += c.ids.length;
+  const ids = new Int32Array(M * WIN), y = new Float32Array(M), dummy = new Float32Array(AUX);
+  let r = 0;
+  for (const c of list) for (let i = 0; i < c.ids.length; i++, r++) {
+    for (let w = -CTX; w <= CTX; w++) { const j = i + w; ids[r * WIN + w + CTX] = (j >= 0 && j < c.ids.length) ? c.ids[j] : 0; }
+    y[r] = Math.log(c.durs[i]);
+  }
+  const xT = tf.tensor2d(ids, [M, WIN], 'int32'), yT = tf.tensor2d(y, [M, 1]);
+  await durModel.fit(xT, yT, { epochs, batchSize: 64, shuffle: true, verbose: 0 });
+  xT.dispose(); yT.dispose();
+}
+
+/* ============================================================
+   Training loop
+   ============================================================ */
+const trainer = { busy: false, stop: false, continuous: false, pending: 0 };
+
+async function train(epochs) {
+  if (trainer.busy) { trainer.pending = Math.max(trainer.pending, epochs); return; }
+  if (!window.tf) return;
+  let list = clips.filter(clipUsable);
+  if (!list.length) { setTrainMsg('Record a clip with a transcript first.'); return; }
+  trainer.busy = true; trainer.stop = false;
+  updateTrainButtons();
+  try {
+    await ensureModels();
+    do {
+      list = clips.filter(clipUsable);
+      if (!list.length) break;
+      const n = trainer.continuous ? 10 : epochs;
+      if (state.epochs >= REALIGN_AFTER) {
+        setPill('Aligning', true);
+        for (const c of list) await realignClip(c);
+        for (const c of list) dbPut(c);
+        if (selectedId) drawAlignment(clips.find(c => c.id === selectedId));
+      }
+      setPill('Training', true);
+      const d = buildFrameData(list);
+      const xi = tf.tensor2d(d.ids, [d.F, WIN], 'int32'), xa = tf.tensor2d(d.aux, [d.F, AUX]), yT = tf.tensor2d(d.y, [d.F, BINS]);
+      setTrainMsg(`Learning from ${list.length} clip${list.length > 1 ? 's' : ''}, ${d.F.toLocaleString()} frames.`);
+      let done = 0;
+      try {
+        await acoustic.fit([xi, xa], yT, {
+          epochs: n, batchSize: 256, shuffle: true, verbose: 0,
+          callbacks: {
+            onBatchEnd: (b) => { $('progBar').style.width = ((done + (b + 1) * 256 / d.F) / n * 100).toFixed(1) + '%'; },
+            onEpochEnd: async (ep, logs) => {
+              done++; state.epochs++; state.losses.push(logs.loss);
+              updateStats(); drawLoss();
+              if (trainer.stop) acoustic.stopTraining = true;
+              await tf.nextFrame();
+            }
+          }
+        });
+      } finally { xi.dispose(); xa.dispose(); yT.dispose(); }
+      setPill('Timing', true);
+      await trainDuration(list, 12);
+      await saveModels(); saveState();
+      if (!trainer.continuous && trainer.pending && !trainer.stop) { epochs = trainer.pending; trainer.pending = 0; continue; }
+    } while ((trainer.continuous || trainer.pending) && !trainer.stop);
+    setTrainMsg(state.epochs >= REALIGN_AFTER
+      ? 'Saved. The model is re-aligning letters to your audio on every session now.'
+      : `Saved. Letter alignment kicks in after ${REALIGN_AFTER} epochs (${Math.max(0, REALIGN_AFTER - state.epochs)} to go).`);
+  } catch (e) {
+    console.error(e);
+    setTrainMsg('Training stopped: ' + (e.message || e) + '. Try fewer or shorter clips if the GPU ran out of memory.');
+  } finally {
+    trainer.busy = false; trainer.continuous = false; trainer.pending = 0;
+    $('progBar').style.width = '0';
+    setPill('Idle', false); updateTrainButtons(); updateStats();
+  }
+}
+
+/* ============================================================
+   Synthesis
+   ============================================================ */
+let lastAudio = null;
+
+async function speak() {
+  const text = normalizeText($('ttsInput').value);
+  if (!text) { $('speakMsg').textContent = 'Type some words first. Letters a to z and basic punctuation are used.'; return; }
+  const btn = $('speakBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  $('speakMsg').textContent = '';
+  try {
+    await ensureModels();
+    const seq = textToIds(text), N = seq.length;
+    const speed = +$('speed').value, clarity = +$('clarity').value;
+    const cid = new Int32Array(N * WIN);
+    for (let i = 0; i < N; i++) for (let w = -CTX; w <= CTX; w++) { const j = i + w; cid[i * WIN + w + CTX] = (j >= 0 && j < N) ? seq[j] : 0; }
+    const durT = tf.tidy(() => durModel.predict(tf.tensor2d(cid, [N, WIN], 'int32')));
+    const logd = await durT.data(); durT.dispose();
+    const durs = Array.from(logd, v => Math.min(60, Math.max(1, Math.round(Math.exp(v) / speed))));
+    const F = durs.reduce((a, b) => a + b, 0);
+    const ids = new Int32Array(F * WIN), aux = new Float32Array(F * AUX);
+    let r = 0;
+    for (let i = 0; i < N; i++) for (let k = 0; k < durs[i]; k++, r++) fillRow(ids, aux, r, seq, i, (k + 0.5) / durs[i], r / F, durs[i]);
+    const predT = tf.tidy(() => acoustic.predict([tf.tensor2d(ids, [F, WIN], 'int32'), tf.tensor2d(aux, [F, AUX])]));
+    const z = await predT.data(); predT.dispose();
+
+    // Smooth over time, then sharpen detail against a smoothed spectral envelope.
+    const zs = new Float32Array(F * BINS);
+    for (let t = 0; t < F; t++) {
+      const a = Math.max(0, t - 1) * BINS, b = t * BINS, c = Math.min(F - 1, t + 1) * BINS;
+      for (let k = 0; k < BINS; k++) zs[b + k] = 0.25 * z[a + k] + 0.5 * z[b + k] + 0.25 * z[c + k];
+    }
+    const mag = new Float32Array(F * BINS), env = new Float32Array(BINS);
+    for (let t = 0; t < F; t++) {
+      const o = t * BINS;
+      for (let k = 0; k < BINS; k++) {
+        let s = 0, n = 0;
+        for (let q = Math.max(0, k - 6); q <= Math.min(BINS - 1, k + 6); q++) { s += zs[o + q]; n++; }
+        env[k] = s / n;
+      }
+      for (let k = 0; k < BINS; k++) {
+        const v = env[k] + (zs[o + k] - env[k]) * clarity;
+        zs[o + k] = v;
+        mag[o + k] = Math.max(0, Math.exp(v * Z_STD + Z_MEAN) - LOG_EPS);
+      }
+    }
+    drawSpectrogram($('outSpec'), zs, F, null);
+    const y = await griffinLim(mag, F, 60, p => { btn.textContent = `Rendering ${Math.round(p * 100)}%`; });
+    let peak = 1e-6; for (let i = 0; i < y.length; i++) peak = Math.max(peak, Math.abs(y[i]));
+    const out = new Float32Array(y.length), fade = Math.min(160, out.length >> 2);
+    for (let i = 0; i < y.length; i++) {
+      let g = 0.9 / peak;
+      if (i < fade) g *= i / fade; else if (i > y.length - fade) g *= (y.length - i) / fade;
+      out[i] = y[i] * g;
+    }
+    lastAudio = out;
+    play(out);
+    const url = URL.createObjectURL(encodeWav(out));
+    const link = $('wavLink'); if (link.href) URL.revokeObjectURL(link.href);
+    link.href = url; link.hidden = false; $('replayBtn').hidden = false;
+    $('speakMsg').textContent = `${(out.length / SR).toFixed(2)} s of audio from ${state.epochs} epochs of training on ${clips.filter(clipUsable).length} clips.`;
+  } catch (e) {
+    console.error(e);
+    $('speakMsg').textContent = 'Could not generate audio: ' + (e.message || e);
+  } finally {
+    btn.textContent = 'Generate and play'; updateStats();
+  }
+}
+let playing = null;
+function play(samples) {
+  const ctx = audioCtx(); ctx.resume();
+  try { playing?.stop(); } catch {}
+  const buf = ctx.createBuffer(1, samples.length, SR);
+  buf.getChannelData(0).set(samples);
+  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.start();
+  playing = src;
+}
+function encodeWav(samples) {
+  const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf);
+  const w = (o, s) => [...s].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + samples.length * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, SR, true); v.setUint32(28, SR * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, 'data'); v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 32767, true);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+/* ============================================================
+   Recording + speech recognition
+   ============================================================ */
+const SRApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, meter = null;
+
+async function startRecording() {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) {
+    showRecNote('The microphone is blocked (' + (e.message || e.name) + '). Allow microphone access for this page in the address bar, then try again.', true);
+    return;
+  }
+  const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(m => window.MediaRecorder?.isTypeSupported?.(m)) || '';
+  const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  const s = { stream, mr, chunks: [], committed: '', sessFinal: '', sessInterim: '', recog: null, recogDone: null, active: true, srBlocked: false, t0: performance.now() };
+  mr.ondataavailable = e => { if (e.data && e.data.size) s.chunks.push(e.data); };
+  s.stopped = new Promise(r => { mr.onstop = r; });
+  mr.start(250);
+  rec = s;
+  showRecNote('', false);
+  if (SRApi) startRecognizer(s);
+  // level meter
+  const ctx = audioCtx(); ctx.resume();
+  const an = ctx.createAnalyser(); an.fftSize = 1024;
+  const srcNode = ctx.createMediaStreamSource(stream); srcNode.connect(an);
+  meter = { an, srcNode, buf: new Float32Array(an.fftSize), hist: [] };
+  $('recBtn').setAttribute('aria-pressed', 'true'); $('recLabel').textContent = 'Stop';
+  renderLive();
+  requestAnimationFrame(meterLoop);
+}
+function startRecognizer(s) {
+  const r = new SRApi();
+  r.lang = $('lang').value; r.continuous = true; r.interimResults = true;
+  r.onresult = e => {
+    let f = '', im = '';
+    for (let i = 0; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) f += ' ' + t; else im += ' ' + t; }
+    s.sessFinal = f; s.sessInterim = im; renderLive();
+  };
+  r.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { s.srBlocked = true; showRecNote('Speech recognition is blocked here, so audio is still recorded but you will need to type what you said into the clip below.', true); }
+    else if (e.error === 'network') { s.srBlocked = true; showRecNote('Speech recognition could not reach its service. The audio is still recorded; type the transcript into the clip below.', true); }
+  };
+  r.onend = () => {
+    s.committed = joinText(s.committed, s.sessFinal + ' ' + s.sessInterim);
+    s.sessFinal = ''; s.sessInterim = '';
+    if (s.active && !s.srBlocked) { try { startRecognizer(s); return; } catch {} }
+    s.recog = null; s.recogDone?.();
+  };
+  s.recog = r;
+  try { r.start(); } catch { s.recog = null; }
+}
+async function stopRecording() {
+  const s = rec; if (!s) return;
+  s.active = false; rec = null;
+  $('recBtn').setAttribute('aria-pressed', 'false'); $('recLabel').textContent = 'Saving…'; $('recBtn').disabled = true;
+  const recogFinished = s.recog ? new Promise(res => { s.recogDone = res; setTimeout(res, 3000); }) : Promise.resolve();
+  try { s.recog?.stop(); } catch {}
+  s.mr.stop(); await s.stopped;
+  s.stream.getTracks().forEach(t => t.stop());
+  try { meter?.srcNode.disconnect(); } catch {}
+  meter = null;
+  await recogFinished;
+  const text = joinText(s.committed, s.sessFinal + ' ' + s.sessInterim);
+  $('liveText').innerHTML = '';
+  $('liveText').append(text ? document.createTextNode(text) : Object.assign(document.createElement('span'), { className: 'placeholder', textContent: 'No words recognized for that one.' }));
+  const blob = new Blob(s.chunks, { type: s.mr.mimeType || 'audio/webm' });
+  try {
+    const c = await addClip(blob, text);
+    if (!text) showRecNote('No speech was recognized. Type what you said into the new clip below and it will join the training set.', true);
+    else if (!clipUsable(c)) showRecNote('Saved, but this clip can\'t be used yet: ' + clipStatus(c)[0].toLowerCase() + '.', true);
+    if (clipUsable(c)) {
+      drawAlignment(c);
+      if ($('autoTrain').checked) train(20);
+    }
+  } catch (e) {
+    showRecNote('Could not save the recording: ' + (e.message || e), true);
+  } finally {
+    $('recLabel').textContent = 'Record'; $('recBtn').disabled = false;
+    $('promptText').textContent = pickPrompt();
+  }
+}
+function meterLoop() {
+  if (!meter || !rec) return;
+  meter.an.getFloatTimeDomainData(meter.buf);
+  let s = 0; for (const v of meter.buf) s += v * v;
+  meter.hist.push(Math.sqrt(s / meter.buf.length));
+  const cv = $('meterCanvas'), dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const bars = Math.floor(w / 4); const hist = meter.hist.slice(-bars);
+  g.fillStyle = css('--rec');
+  hist.forEach((v, i) => { const bh = Math.max(2, Math.min(1, v * 6) * (h - 6)); g.fillRect(w - (hist.length - i) * 4, (h - bh) / 2, 2.5, bh); });
+  const el = (performance.now() - rec.t0) / 1000;
+  $('recTime').textContent = `${Math.floor(el / 60)}:${String(Math.floor(el % 60)).padStart(2, '0')}`;
+  if (el >= MAX_REC_SEC) { stopRecording(); return; }
+  requestAnimationFrame(meterLoop);
+}
+function renderLive() {
+  const s = rec, el = $('liveText');
+  if (!s) return;
+  el.innerHTML = '';
+  const fin = joinText(s.committed, s.sessFinal);
+  if (!fin && !s.sessInterim.trim()) {
+    el.append(Object.assign(document.createElement('span'), { className: 'placeholder', textContent: SRApi ? 'Listening…' : 'Recording. This browser has no speech recognition, so type the transcript afterwards.' }));
+    return;
+  }
+  el.append(document.createTextNode(fin + ' '));
+  el.append(Object.assign(document.createElement('span'), { className: 'interim', textContent: s.sessInterim.trim() }));
+}
+
+/* ============================================================
+   Drawing
+   ============================================================ */
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const CMAP = (() => {
+  const stops = [[0, [11, 13, 23]], [0.25, [52, 30, 96]], [0.5, [158, 48, 110]], [0.75, [238, 117, 62]], [1, [251, 236, 166]]];
+  const lut = new Uint8Array(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const x = i / 255; let k = 0; while (k < stops.length - 2 && x > stops[k + 1][0]) k++;
+    const [x0, c0] = stops[k], [x1, c1] = stops[k + 1], f = (x - x0) / (x1 - x0);
+    for (let j = 0; j < 3; j++) lut[i * 3 + j] = Math.round(c0[j] + (c1[j] - c0[j]) * f);
+  }
+  return lut;
+})();
+function specImage(z, T) {
+  const H = 128, off = document.createElement('canvas'); off.width = T; off.height = H;
+  const g = off.getContext('2d'), img = g.createImageData(T, H);
+  for (let t = 0; t < T; t++) for (let y = 0; y < H; y++) {
+    const k = (H - 1 - y) * 2, v = (z[t * BINS + k] + z[t * BINS + k + 1]) / 2;
+    const ci = Math.max(0, Math.min(255, Math.round((v + 2.2) / 4.2 * 255))) * 3, p = (y * T + t) * 4;
+    img.data[p] = CMAP[ci]; img.data[p + 1] = CMAP[ci + 1]; img.data[p + 2] = CMAP[ci + 2]; img.data[p + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return off;
+}
+function drawSpectrogram(cv, z, T) {
+  cv.width = Math.max(300, T * 2); cv.height = 256;
+  const g = cv.getContext('2d'); g.imageSmoothingEnabled = true;
+  g.drawImage(specImage(z, T), 0, 0, cv.width, cv.height);
+}
+function drawAlignment(c) {
+  const fig = $('alignFig');
+  if (!c || !c.feat) { fig.hidden = true; return; }
+  fig.hidden = false;
+  const sx = 4, cv = $('alignSpec'), dpr = Math.min(2, devicePixelRatio || 1);
+  const W = c.T * sx, H = 180, specH = 150;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#0b0d17'; g.fillRect(0, 0, W, H);
+  g.imageSmoothingEnabled = true;
+  g.drawImage(specImage(c.feat, c.T), 0, 0, W, specH);
+  if (c.durs) {
+    g.font = '500 13px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    let t = 0;
+    c.durs.forEach((d, i) => {
+      const x0 = t * sx, x1 = (t + d) * sx;
+      g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(x0, 0, 1, specH);
+      const ch = c.norm[i] === ' ' ? '·' : c.norm[i];
+      g.fillStyle = i % 2 ? '#c9d3ff' : '#ffffff';
+      g.fillText(ch, (x0 + x1) / 2, specH + 15);
+      t += d;
+    });
+  }
+  const aligned = state.epochs >= REALIGN_AFTER;
+  $('alignCap').textContent = `“${c.norm || '(no transcript)'}”: ${c.T} frames (${(c.T / 100).toFixed(2)} s after trimming silence). `
+    + (c.durs ? (aligned ? 'Letter boundaries come from the model\'s own alignment search.' : 'Letters are spread evenly for now; the model starts aligning them itself after ' + REALIGN_AFTER + ' epochs.') : 'Not used for training yet.');
+}
+function drawLoss() {
+  const cv = $('lossCanvas'), dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (!w) return;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const ink = css('--ink'), muted = css('--muted'), line = css('--line'), acc = css('--model');
+  g.font = '12px "IBM Plex Mono", monospace';
+  const L = state.losses;
+  if (L.length < 2) {
+    g.fillStyle = muted; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(L.length ? 'One epoch done. The curve appears after the second.' : 'The loss curve appears once training starts.', w / 2, h / 2);
+    return;
+  }
+  const pad = { l: 46, r: 12, t: 10, b: 20 };
+  const lg = L.map(v => Math.log10(Math.max(1e-6, v)));
+  let lo = Math.min(...lg), hi = Math.max(...lg);
+  if (hi - lo < 0.05) { hi += 0.05; lo -= 0.05; }
+  const X = i => pad.l + i / (L.length - 1) * (w - pad.l - pad.r);
+  const Y = v => pad.t + (hi - v) / (hi - lo) * (h - pad.t - pad.b);
+  g.strokeStyle = line; g.lineWidth = 1; g.fillStyle = muted; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let q = 0; q <= 3; q++) {
+    const v = lo + (hi - lo) * q / 3, y = Y(v);
+    g.beginPath(); g.moveTo(pad.l, y); g.lineTo(w - pad.r, y); g.stroke();
+    g.fillText(Math.pow(10, v).toPrecision(2), pad.l - 6, y);
+  }
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.fillText('epoch 1', pad.l, h - 4); g.textAlign = 'right'; g.fillText('epoch ' + state.epochs, w - pad.r, h - 4);
+  const step = Math.max(1, Math.floor(L.length / (w * 1.5)));
+  g.beginPath();
+  for (let i = 0; i < L.length; i += step) i ? g.lineTo(X(i), Y(lg[i])) : g.moveTo(X(i), Y(lg[i]));
+  g.lineTo(X(L.length - 1), Y(lg[L.length - 1]));
+  g.strokeStyle = acc; g.lineWidth = 2; g.stroke();
+  g.lineTo(X(L.length - 1), h - pad.b); g.lineTo(X(0), h - pad.b); g.closePath();
+  g.globalAlpha = 0.12; g.fillStyle = acc; g.fill(); g.globalAlpha = 1;
+  g.beginPath(); g.arc(X(L.length - 1), Y(lg[L.length - 1]), 4, 0, 7); g.fillStyle = acc; g.fill();
+  g.strokeStyle = css('--panel'); g.lineWidth = 2; g.stroke();
+  void ink;
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+function setPill(text, on) { const p = $('trainPill'); p.textContent = text; p.classList.toggle('on', on); }
+function setTrainMsg(t) { $('trainMsg').textContent = t; }
+function showRecNote(t, warn) { const n = $('recNote'); n.textContent = t; n.hidden = !t; n.classList.toggle('warn', !!warn); }
+let promptIdx = Math.floor(Math.random() * PROMPTS.length);
+function pickPrompt() { promptIdx = (promptIdx + 1 + Math.floor(Math.random() * 5)) % PROMPTS.length; return PROMPTS[promptIdx]; }
+
+function updateStats() {
+  const usable = clips.filter(clipUsable);
+  const frames = usable.reduce((a, c) => a + c.T, 0);
+  const secs = usable.reduce((a, c) => a + c.seconds, 0);
+  $('statClips').textContent = usable.length;
+  $('statAudio').textContent = secs < 90 ? secs.toFixed(1) + ' s' : (secs / 60).toFixed(1) + ' min';
+  $('statFrames').textContent = frames.toLocaleString();
+  $('statEpochs').textContent = state.epochs.toLocaleString();
+  const last = state.losses[state.losses.length - 1];
+  $('statLoss').textContent = last != null ? last.toFixed(4) : '–';
+  $('stepRecVal').textContent = `${usable.length} clip${usable.length === 1 ? '' : 's'}`;
+  $('stepTrainVal').textContent = `${state.epochs} epoch${state.epochs === 1 ? '' : 's'}`;
+  const ready = state.epochs > 0 && !!window.tf;
+  $('stepSpeakVal').textContent = ready ? 'ready' : 'locked';
+  $('stepRec').className = usable.length ? 'done' : 'active';
+  $('stepTrain').className = state.epochs > 0 ? 'done' : (usable.length ? 'active' : '');
+  $('stepSpeak').className = ready ? 'active' : '';
+  $('speakBtn').disabled = !ready || $('speakBtn').textContent !== 'Generate and play';
+  $('speakHint').textContent = ready
+    ? (state.epochs < 100 ? 'Early days: expect a hum in your tone. It sharpens with more clips and epochs.' : 'Trained on your voice. Type something and listen.')
+    : 'Locked until the model has trained at least one epoch.';
+  const n = clips.length;
+  $('libCount').textContent = n ? `${n} recording${n === 1 ? '' : 's'}, ${usable.length} usable for training` : '';
+  $('clipEmpty').hidden = n > 0;
+}
+function updateTrainButtons() {
+  const has = clips.some(clipUsable) && !!window.tf;
+  $('train20').disabled = trainer.busy || !has;
+  $('trainLoop').disabled = !has && !trainer.busy;
+  $('trainLoop').textContent = trainer.busy ? 'Stop training' : 'Train continuously';
+  $('resetModel').disabled = trainer.busy;
+}
+
+function renderClips() {
+  const list = $('clipList');
+  list.innerHTML = '';
+  [...clips].sort((a, b) => b.created - a.created).forEach((c, idx, arr) => {
+    const li = document.createElement('li');
+    li.className = 'clip' + (c.id === selectedId ? ' selected' : '');
+    const [label, kind] = clipStatus(c);
+    const top = document.createElement('div'); top.className = 'clip-top';
+    const when = document.createElement('span'); when.className = 'when';
+    when.textContent = `#${arr.length - idx} · ${c.seconds.toFixed(1)} s · ${new Date(c.created).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+    const tag = document.createElement('span'); tag.className = 'tag ' + kind; tag.textContent = label;
+    top.append(when, tag);
+    c.url ||= URL.createObjectURL(c.blob);
+    const audio = document.createElement('audio'); audio.controls = true; audio.preload = 'none'; audio.src = c.url;
+    const ta = document.createElement('textarea'); ta.rows = 2; ta.value = c.text; ta.id = 'clip-text-' + c.id;
+    ta.placeholder = 'Type exactly what you said in this clip';
+    ta.setAttribute('aria-label', 'Transcript');
+    ta.addEventListener('change', async () => {
+      setClipText(c, ta.value.trim()); await dbPut(c);
+      selectedId = c.id; renderClips(); updateStats(); updateTrainButtons(); drawAlignment(c);
+    });
+    const actions = document.createElement('div'); actions.className = 'clip-actions';
+    const show = btn('Show alignment', 'ghost small', () => { selectedId = c.id; renderClips(); drawAlignment(c); $('alignFig').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); });
+    show.disabled = !c.feat;
+    const dl = document.createElement('a'); dl.className = 'btnlike ghost small'; dl.textContent = 'Download';
+    dl.href = c.url; dl.download = `mimic-${c.id}.${/mp4/.test(c.blob.type) ? 'm4a' : /ogg/.test(c.blob.type) ? 'ogg' : /wav/.test(c.blob.type) ? 'wav' : 'webm'}`;
+    let armed = null;
+    const del = btn('Delete', 'ghost small danger', async () => {
+      if (!armed) { del.textContent = 'Click again to delete'; armed = setTimeout(() => { del.textContent = 'Delete'; armed = null; }, 3000); return; }
+      clearTimeout(armed);
+      await dbDelete(c.id); URL.revokeObjectURL(c.url);
+      clips.splice(clips.indexOf(c), 1);
+      if (selectedId === c.id) { selectedId = null; $('alignFig').hidden = true; }
+      renderClips(); updateStats(); updateTrainButtons();
+    });
+    actions.append(show, dl, del);
+    li.append(top, audio, ta, actions);
+    list.append(li);
+  });
+  updateTrainButtons();
+}
+function btn(text, cls, fn) { const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = text; b.addEventListener('click', fn); return b; }
+
+async function resetModel() {
+  const b = $('resetModel');
+  if (b.dataset.armed !== '1') {
+    b.dataset.armed = '1'; b.textContent = 'Click again to erase the model';
+    setTimeout(() => { b.dataset.armed = ''; b.textContent = 'Reset model'; }, 3500);
+    return;
+  }
+  b.dataset.armed = ''; b.textContent = 'Reset model';
+  acoustic?.dispose(); durModel?.dispose(); acoustic = durModel = null;
+  try { await tf.io.removeModel(AC_KEY); } catch {}
+  try { await tf.io.removeModel(DUR_KEY); } catch {}
+  state.epochs = 0; state.losses = []; saveState();
+  for (const c of clips) { c.durs = null; setClipText(c, c.text); dbPut(c); }
+  drawLoss(); updateStats(); renderClips();
+  if (selectedId) drawAlignment(clips.find(c => c.id === selectedId));
+  setTrainMsg('Model erased. Your recordings are kept; train again to start from zero.');
+}
+
+async function init() {
+  $('promptText').textContent = PROMPTS[promptIdx];
+  const nav = (navigator.language || 'en-US');
+  const opt = [...$('lang').options].find(o => o.value === nav) || [...$('lang').options].find(o => o.value.slice(0, 2) === nav.slice(0, 2));
+  if (opt) $('lang').value = opt.value;
+  try { const l = localStorage.getItem('mimic-lang'); if (l) $('lang').value = l; } catch {}
+  $('lang').addEventListener('change', () => { try { localStorage.setItem('mimic-lang', $('lang').value); } catch {} });
+
+  const warn = [];
+  if (!window.isSecureContext) warn.push('This page is not running on https or localhost, so the browser will block the microphone. Serve the folder with a local web server (for example, python3 -m http.server) and open it at http://localhost.');
+  if (!SRApi) warn.push('This browser has no built-in speech recognition. Recording still works, and you can type each transcript yourself. Chrome or Edge transcribe automatically.');
+  if (!window.tf) warn.push('TensorFlow.js did not load, so training is unavailable. Check your connection and reload.');
+  if (warn.length) { $('envBanner').textContent = warn.join(' '); $('envBanner').hidden = false; }
+
+  $('nextPrompt').addEventListener('click', () => { $('promptText').textContent = pickPrompt(); });
+  $('recBtn').addEventListener('click', () => rec ? stopRecording() : startRecording());
+  $('train20').addEventListener('click', () => train(20));
+  $('trainLoop').addEventListener('click', () => {
+    if (trainer.busy) { trainer.stop = true; trainer.continuous = false; setTrainMsg('Stopping after this epoch…'); return; }
+    trainer.continuous = true; train(10);
+  });
+  $('resetModel').addEventListener('click', resetModel);
+  $('speakBtn').addEventListener('click', speak);
+  $('replayBtn').addEventListener('click', () => lastAudio && play(lastAudio));
+  $('speed').addEventListener('input', () => { $('speedOut').textContent = (+$('speed').value).toFixed(2) + '×'; });
+  $('clarity').addEventListener('input', () => { $('clarityOut').textContent = (+$('clarity').value).toFixed(2); });
+  $('ttsInput').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !$('speakBtn').disabled) speak(); });
+  $('fileIn').addEventListener('change', async e => {
+    for (const f of e.target.files) {
+      const c = await addClip(f, '', f.name);
+      if (c.problem) showRecNote(`${f.name}: ${c.problem.toLowerCase()}.`, true);
+      else showRecNote(`Added ${f.name}. Type what is said in it below to use it for training.`, false);
+    }
+    e.target.value = '';
+  });
+  window.addEventListener('resize', () => drawLoss());
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => drawLoss());
+
+  if (window.tf) {
+    try { await tf.setBackend('webgl'); } catch { await tf.setBackend('cpu'); }
+    await tf.ready();
+  }
+  try {
+    const recs = await dbAll();
+    recs.sort((a, b) => a.created - b.created);
+    setTrainMsg(recs.length ? `Loading ${recs.length} saved recordings…` : 'The model starts empty. Record a clip and it begins learning.');
+    for (const r of recs) { const c = { ...r }; await prepareClip(c); clips.push(c); }
+    if (recs.length) setTrainMsg(`Loaded ${recs.length} recordings from this browser.`);
+  } catch (e) {
+    setTrainMsg('Could not open browser storage, so recordings will not be kept after you leave: ' + (e.message || e));
+  }
+  if (window.tf && state.epochs > 0) {
+    await ensureModels();
+    if (state.epochs > 0) setTrainMsg(`Welcome back. The model has ${state.epochs} epochs of training on your voice.`);
+  }
+  renderClips(); updateStats(); drawLoss();
+  const latest = [...clips].reverse().find(clipUsable);
+  if (latest) { selectedId = latest.id; renderClips(); drawAlignment(latest); }
+}
+init();
+</script>
+</body>
+</html>
