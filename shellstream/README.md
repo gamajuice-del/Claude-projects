@@ -17,6 +17,10 @@ mouse-look locally for them.
 | `server.py` | Tornado WebSocket server, ack flow control, event-driven updates, network emulation |
 | `client/` | WebGL2 client: topology-aware mesh warp, multi-shell compositing, local physics and objects; `host.js`: game-host mode |
 | `host.py` | Game host: runs ANY unmodified game on a virtual display, injects input, NVENC H.264, learns pixels-per-count, lag and the HUD mask online |
+| `host_win.py` | Game host on Windows: DXGI capture, SendInput (scan codes, relative and absolute mouse), pointer state |
+| `host_audio.py` | Game audio: output loopback, Opus, sent beside the video |
+| `windows/` | Roblox (or any Windows game) on a 2x T4 Windows machine: `setup.ps1` and the guide |
+| `tests/` | Unit tests (`python tests/test_host_win.py`) |
 | `bench/` | Experiments (`quality.py`, `disocc.py`, `latency.py`, `bandwidth.py`, `codec_explore.py`, `video.py`, `cost_model.py`, `cuda_check.py`; game host: `host_bench.py`, `host_calib.py`) and report generation |
 | `results/` | Raw results (JSON) and figures from the development run |
 | `build_notebook.py` | Regenerates the notebook from the sources |
@@ -37,6 +41,10 @@ pip install av python-xlib && sudo apt install xvfb          # + virtualgl on a 
 python server.py --game minetest --size 1280x720 --fov 90 --overscan 1.12      # built-in test game
 python server.py --game /path/to/game --launcher "vglrun -d egl0" --encode-gpu 1 --fov 75 --overscan 1.12
 ```
+
+Roblox on a Windows machine with two T4s (official client, online play, audio, 60 fps): see
+[`windows/README.md`](windows/README.md). In short, `windows\setup.ps1` once, then
+`https://<machine>:8765/?token=...` in your browser.
 
 Experiments (headless Chromium via Playwright, CPU renderer):
 

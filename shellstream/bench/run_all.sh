@@ -6,6 +6,8 @@ set -ex
 cd "$(dirname "$0")"
 python3 -u host_calib.py                   # game-host calibrator vs. a known rotation (synthetic perspective views)
 python3 -u host_bench.py                   # ANY game (Minetest, unmodified): prediction step response + look latency
+python3 -u host_full.py                    # full remote control: token/TLS, pointer modes, menus by absolute pointer, audio
+python3 -u host_fps.py                     # game-host throughput at 720p/1080p (x264 here; NVENC on a T4)
 python3 -u quality.py                      # image quality vs. 16-spp ground truth, 3 scenes x 12 displacements, 1 vs 2 T4s
 python3 -u disocc.py                       # quality inside newly revealed regions only
 SS_QUALITY=high_noreflect SS_TAG=_noreflect SS_SCENES=plaza,pillars SS_OFFSETS="none,yaw 30deg,strafe 0.1m,strafe 0.5m,forward 0.5m" python3 -u quality.py

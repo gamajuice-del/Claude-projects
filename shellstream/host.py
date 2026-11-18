@@ -24,6 +24,7 @@ import math
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -74,12 +75,19 @@ class VirtualDisplay:
 
 
 class XInjector:
-    def __init__(self, display_name, window_id):
+    def __init__(self, display_name, window_id, rect=(0, 0, 0, 0)):
         from Xlib import X, XK, display
         from Xlib.ext import xtest
         self.X, self.XK, self.xtest = X, XK, xtest
         self.d = display.Display(display_name)
         self.win = self.d.create_resource_object("window", window_id)
+        self.rect = rect
+        self.dc = display.Display(display_name)         # own connection for cursor queries (capture thread)
+        try:
+            self.dc.xfixes_query_version()
+            self.has_xfixes = True
+        except Exception:
+            self.has_xfixes = False
         self.lock = threading.Lock()
         self.cx = self.cy = 0           # cumulative relative mouse counts injected
         self.hist = deque([(0.0, 0, 0)], maxlen=4096)   # (time, cx, cy) after every injection
@@ -115,14 +123,26 @@ class XInjector:
                         kc = self.d.keysym_to_keycode(self.XK.string_to_keysym(name))
                         if kc:
                             xt.fake_input(self.d, X.KeyPress if ev[2] else X.KeyRelease, kc)
+                elif kind == "a":                     # absolute pointer position in the captured area
+                    x = self.rect[0] + int(min(max(float(ev[1]), 0), max(self.rect[2] - 1, 0)))
+                    y = self.rect[1] + int(min(max(float(ev[2]), 0), max(self.rect[3] - 1, 0)))
+                    xt.fake_input(self.d, X.MotionNotify, x=x, y=y)
                 elif kind == "b":
-                    btn = {0: 1, 1: 2, 2: 3}.get(int(ev[1]), 1)
+                    btn = {0: 1, 1: 2, 2: 3, 3: 8, 4: 9}.get(int(ev[1]), 1)
                     xt.fake_input(self.d, X.ButtonPress if ev[2] else X.ButtonRelease, btn)
-                elif kind == "w":
-                    btn = 4 if ev[1] < 0 else 5
+                elif kind in ("w", "wh"):
+                    btn = (4 if ev[1] < 0 else 5) if kind == "w" else (6 if ev[1] < 0 else 7)
                     xt.fake_input(self.d, X.ButtonPress, btn); xt.fake_input(self.d, X.ButtonRelease, btn)
             self.d.sync()
             return self.cx, self.cy
+
+    def cursor(self):
+        """(visible, x, y) in the captured area.  Games hide the pointer while it turns the camera."""
+        if not self.has_xfixes:
+            return False, None, None
+        r = self.dc.xfixes_get_cursor_image(self.dc.screen().root)
+        visible = any((p >> 24) & 0xFF for p in r.cursor_image)
+        return visible, r.x - self.rect[0], r.y - self.rect[1]
 
 
 class XGrabber:
@@ -174,11 +194,13 @@ class Calibrator:
     rotation per count, in pixels at the image centre.  In plain pixels, a turn moves the edges of a wide view
     up to three times as far as the centre, so the fitted value depended on where the texture happened to be."""
 
-    def __init__(self, crop=(0.12, 0.44, 0.12, 0.88), scale=2, window=240, max_lag=4, fov_v=None):
+    def __init__(self, crop=(0.12, 0.44, 0.12, 0.88), scale=None, window=240, max_lag=4, fov_v=None):
+        # scale=None: sample grid and HUD blocks grow with the frame, so 1080p costs what 640x360 does
         self.crop, self.scale, self.window, self.max_lag = crop, scale, window, max_lag
+        self.auto = scale is None
         self.fov_v = fov_v
         self._map = None                           # cached angle-space resampling for one frame size
-        self._ux = self._uy = float(scale)         # centre-equivalent pixels per resampled sample
+        self._ux = self._uy = float(scale or 2)    # centre-equivalent pixels per resampled sample
         self.prev = None
         self.horizon = 6                                      # captures per fitting window
         self.gbuf = deque(maxlen=self.horizon + 1)            # the last horizon+1 resampled crops
@@ -191,7 +213,7 @@ class Calibrator:
         self.n = 0
         # screen-fixed overlay (HUD, crosshair, first-person hand, chat) learned from the frames themselves:
         # while the world visibly moves, pixels that stay identical belong to the overlay
-        self.hud_block = 4
+        self.hud_block = 4 if scale is not None else None
         self.hud_prev = None
         self.hud_score = None
         self.hud_votes = 0
@@ -234,7 +256,13 @@ class Calibrator:
         dx, dy, p = phase_shift(a, b)
         return dx * self._ux, dy * self._uy, p
 
-    def update(self, rgb, cx, cy, t=None):
+    def update(self, rgb, cx, cy, t=None, look=True):
+        """one captured frame and the counts injected so far.  look=False: the game shows a pointer (menus), so
+        counts moved the pointer, not the camera; such frames don't enter the fit or the HUD mask."""
+        if self.auto and self.hud_block is None:
+            w = rgb.shape[1]
+            self.scale, self.hud_block = max(2, int(round(w / 320))), max(4, w // 160)
+            self._ux = self._uy = float(self.scale)
         g = self._small(rgb)
         t = time.perf_counter() if t is None else t
         self.counts.append((cx, cy))
@@ -247,8 +275,8 @@ class Calibrator:
             # the shift over the whole fitting window, measured in one correlation: summing per-pair shifts
             # accumulated their sub-pixel bias (the online fit came out 5 % high on the game)
             span = self._shift(self.gbuf[0], g) if len(self.gbuf) == self.horizon + 1 else (np.nan, np.nan, 0.0)
-            self.hist.append([cx, cy, dx, dy, peak, t, *span])
-            if peak > 0.1 and np.hypot(dx, dy) >= 4 and self.hud_prev is not None \
+            self.hist.append([cx, cy, dx, dy, peak, t, *span, float(look)])
+            if look and peak > 0.1 and np.hypot(dx, dy) >= 4 and self.hud_prev is not None \
                     and self.hud_prev.shape == small.shape:
                 # Only *discriminating* blocks vote.  A block that changed is world.  A block that stayed put is
                 # overlay only if moving it with the world would have visibly changed it; a plain block (sky,
@@ -291,12 +319,13 @@ class Calibrator:
             return
         c, ok = H[:, :2], (H[:, 8] > 0.08) & np.isfinite(H[:, 6])
         span = np.nan_to_num(H[:, 6:8])
+        menu = np.concatenate([[0], np.cumsum(H[:, 9] < 0.5)])       # frames with a visible pointer
         best = None
         for L in range(0, self.max_lag + 1):
             ks = np.arange(horizon + L, n)
             dS = span[ks]                                              # shift from capture k - horizon to k
             dC = c[ks - L] - c[ks - L - horizon]
-            m = ok[ks] & (np.abs(dC).sum(1) > 2)
+            m = ok[ks] & (np.abs(dC).sum(1) > 2) & (menu[ks + 1] - menu[ks - L - horizon] == 0)
             if m.sum() < 10:
                 continue
             k, res, tot = [], 0.0, 0.0
@@ -401,22 +430,59 @@ class GameHost:
     """Frame source for ShellServer: streams any game's window, injects input, publishes calibration."""
     kind = "host"
 
-    def __init__(self, cmd, size=(960, 540), display=None, fov_v=None, overscan=1.0, codec="auto", jpeg_q=80,
-                 fps=60, bitrate=8_000_000, gpu=0, cwd=None, env=None, launcher=(), window_name=None, settle=90.0):
+    def __init__(self, cmd=None, size=(960, 540), display=None, fov_v=None, overscan=1.0, codec="auto", jpeg_q=80,
+                 fps=60, bitrate=None, gpu=0, cwd=None, env=None, launcher=(), window_name=None, settle=90.0,
+                 desktop=False):
+        """cmd: the game's command line (None: stream what's already on the screen).  desktop=True streams the
+        whole screen (menus, launcher, browser, the game), otherwise the game's window.  On Windows the
+        screen is the primary monitor; elsewhere an X display (a new Xvfb unless `display` is given)."""
         self.size = size
         self.fov_v, self.overscan, self.fps = fov_v, overscan, fps
         self.vd = None
-        if display is None:
-            self.vd = VirtualDisplay(*size)
-            display = self.vd.name
-        self.display = display
-        e = dict(os.environ, DISPLAY=display, **(env or {}))
-        self.proc = subprocess.Popen(list(launcher) + list(cmd), cwd=cwd, env=e,
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.wid, rect = self._find_window(window_name, settle)
-        self.inj = XInjector(display, self.wid)
-        self.grab = XGrabber(display, *rect)
+        self.proc = None
+        if sys.platform == "win32":
+            import host_win as W
+            if cmd:
+                self.proc = subprocess.Popen(list(launcher) + list(cmd), cwd=cwd, env=dict(os.environ, **(env or {})))
+            hwnd, rect = (None, W.desktop_rect()) if (desktop or not window_name) else W.find_window(window_name, settle)
+            self.inj = W.WinInjector(rect, hwnd=hwnd)
+            self.grab = W.WinGrabber(rect)
+            self.display = "windows:" + ("desktop" if hwnd is None else window_name)
+        else:
+            if display is None:
+                self.vd = VirtualDisplay(*size)
+                display = self.vd.name
+            self.display = display
+            e = dict(os.environ, DISPLAY=display, **(env or {}))
+            if cmd:
+                self.proc = subprocess.Popen(list(launcher) + list(cmd), cwd=cwd, env=e,
+                                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if cmd and not desktop:
+                self.wid, rect = self._find_window(window_name, settle)
+            else:
+                from Xlib import display as xd
+                root = xd.Display(display).screen().root
+                g = root.get_geometry()
+                self.wid, rect = root.id, (0, 0, g.width, g.height)
+            self.inj = XInjector(display, self.wid, rect)
+            self.grab = XGrabber(display, *rect)
+        self._setup(rect, codec, jpeg_q, bitrate, gpu)
+
+    @classmethod
+    def from_backend(cls, inj, grab, rect, fov_v=None, overscan=1.0, fps=60, codec="auto", jpeg_q=80, bitrate=None, gpu=0):
+        """a host around any injector/grabber pair (tests, benchmarks, other capture backends)"""
+        self = cls.__new__(cls)
+        self.size, self.fov_v, self.overscan, self.fps = rect[2:], fov_v, overscan, fps
+        self.vd = self.proc = None
+        self.display, self.inj, self.grab = "custom", inj, grab
+        self._setup(rect, codec, jpeg_q, bitrate, gpu)
+        return self
+
+    def _setup(self, rect, codec, jpeg_q, bitrate, gpu):
+        fps, fov_v = self.fps, self.fov_v
         self.w, self.h = rect[2], rect[3]
+        if bitrate is None:                         # about 0.1 bit per pixel: 1080p60 -> 12 Mbit/s
+            bitrate = int(max(4e6, 0.1 * self.w * self.h * fps))
         self.cal = Calibrator(fov_v=fov_v)
         self.jpeg = None
         self.video = None
@@ -435,6 +501,24 @@ class GameHost:
             self.jpeg = E.JpegEncoder(jpeg_q, prefer_gpu=False)
         self.last_hash = None
         self.lock = threading.Lock()
+        # the calibrator runs beside capture and encoding, on the newest frame, so it never costs frame rate
+        self._cal_item = None
+        self._cal_ev = threading.Event()
+        self._alive = True
+        threading.Thread(target=self._cal_loop, daemon=True).start()
+
+    def _cal_loop(self):
+        while self._alive:
+            if not self._cal_ev.wait(0.2):
+                continue
+            self._cal_ev.clear()
+            item, self._cal_item = self._cal_item, None
+            if item is not None:
+                try:
+                    self.cal.update(*item)
+                    self.cal_updates = getattr(self, "cal_updates", 0) + 1
+                except Exception:
+                    import traceback; traceback.print_exc()
 
     # -------------------------------------------------------------- window discovery
     def _find_window(self, name, settle):
@@ -494,7 +578,9 @@ class GameHost:
         rgb = self.grab.grab()
         cx, cy = self.inj.cx, self.inj.cy
         t_cap = time.perf_counter()
-        self.cal.update(rgb, cx, cy, t_cap)
+        visible, px, py = self.inj.cursor()
+        self._cal_item = (rgb, cx, cy, t_cap, not visible)
+        self._cal_ev.set()
         hsh = hashlib.blake2b(rgb[::16, ::16].tobytes(), digest_size=8).digest()
         if hsh == self.last_hash and not force:
             return None, None
@@ -508,6 +594,7 @@ class GameHost:
         t_enc = time.perf_counter()
         hdr = dict(type="gframe", id=frame_id, codec=self.codec, key=key, w=self.w - self.w % 2, h=self.h - self.h % 2,
                    cx=rx, cy=ry, cal=self.cal.state(), fov_v=self.fov_v, overscan=self.overscan,
+                   look=not visible, cur=[px, py] if visible and px is not None else None,
                    stats=dict(capture_ms=round((t_cap - t0) * 1000, 2), encode_ms=round((t_enc - t_cap) * 1000, 2),
                               bytes=len(data)))
         extra = b""
@@ -527,8 +614,10 @@ class GameHost:
         return len(hb).to_bytes(4, "little") + hb + data + extra, hdr["stats"]
 
     def close(self):
+        self._alive = False
         try:
-            self.proc.terminate()
+            if self.proc:
+                self.proc.terminate()
         except Exception:
             pass
         if self.vd:

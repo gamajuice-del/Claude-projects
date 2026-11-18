@@ -1,0 +1,52 @@
+{
+ "http_status": {
+  "no token": 403,
+  "wrong token": 403,
+  "token": 200
+ },
+ "browser": {
+  "secure": true,
+  "video": "function",
+  "audio": "function",
+  "codec": "h264",
+  "decoder": true
+ },
+ "pointer_modes": {
+  "in game": {
+   "look": true,
+   "cur": null
+  },
+  "pause menu": {
+   "look": false,
+   "cur": [
+    320,
+    180
+   ],
+   "predicted": [
+    0,
+    0
+   ]
+  },
+  "pointer moved to Continue": {
+   "look": false,
+   "cur": [
+    398,
+    139
+   ]
+  },
+  "after clicking Continue": {
+   "look": true,
+   "cur": null
+  }
+ },
+ "pointer_mapping_err_px": 1.9984014443252818e-14,
+ "audio": {
+  "packets": 308,
+  "decoded": 277,
+  "rms": 0.21228999554129416,
+  "bufMs": 136,
+  "dropped": 0,
+  "state": "on"
+ },
+ "all_ok": true
+}

@@ -41,6 +41,10 @@ const HOST = {
   sentCx: 0, sentCy: 0, remX: 0, remY: 0, batch: [], timer: null, lastFlush: 0,
   ipr: QS.get('ipr') !== '0', decoder: null, meta: new Map(), frames: 0, arrivals: [], bytes: [],
   log: [], refRow: null, tInj: null, expectShift: 0,
+  // pointer: 'look' (game hides the pointer: relative counts, predicted) or 'cursor' (menus: absolute positions,
+  // pointer drawn locally at display rate).  force: null = follow the game, or a fixed mode (Alt+L cycles)
+  started: false, force: null, curX: 0, curY: 0, lastLocalMove: 0, wasLook: true, vp: [0, 0, 1, 1], tD: [1, 1],
+  audio: null, aStats: { packets: 0, decoded: 0, rms: 0, bufMs: 0, dropped: 0, state: 'off' },
 
   start(info) {
     this.active = true; this.info = info;
@@ -57,7 +61,46 @@ const HOST = {
       ok.then((yes) => { if (yes) this.makeDecoder(); else { this.info.codec = 'jpeg'; send({ type: 'codec', codec: 'jpeg' }); } });
     }
     const sc = document.getElementById('score'); if (sc) sc.style.display = 'none';
+    const cr = document.getElementById('cross'); if (cr) cr.style.display = 'none';
     const st = document.querySelector('#start h1'); if (st) st.textContent = 'ShellStream: game host';
+    this.curX = this.info.w / 2; this.curY = this.info.h / 2;
+    // the locally drawn pointer (cursor mode) and a small toolbar for when the mouse isn't captured
+    this.curEl = Object.assign(document.createElement('div'), { id: 'hcur' });
+    this.curEl.innerHTML = '<svg width="18" height="26" viewBox="0 0 18 26"><path d="M1 1 L1 20 L6 15.5 L9.5 24 L13 22.5 L9.6 14.3 L16 14.3 Z" fill="#fff" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+    Object.assign(this.curEl.style, { position: 'fixed', left: '0', top: '0', pointerEvents: 'none', zIndex: 20, display: 'none' });
+    document.body.appendChild(this.curEl);
+    this.tools = Object.assign(document.createElement('div'), { id: 'htools' });
+    Object.assign(this.tools.style, { position: 'fixed', right: '12px', top: '12px', zIndex: 21, display: 'none', gap: '6px' });
+    for (const [label, fn] of [['Esc', () => this.tapKey('Escape')], ['Fullscreen', () => this.fullscreen()]]) {
+      const b = Object.assign(document.createElement('button'), { textContent: label });
+      Object.assign(b.style, { font: '12px system-ui, sans-serif', padding: '6px 10px', borderRadius: '6px', border: '1px solid #355',
+        background: '#0a1220', color: '#d8e2ee', cursor: 'pointer' });
+      b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+      this.tools.appendChild(b);
+    }
+    document.body.appendChild(this.tools);
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  },
+
+  // ---------------------------------------------------------------- session start (user gesture)
+  begin() {
+    this.started = true;
+    document.getElementById('start').style.display = 'none';
+    this.startAudio();
+    this.lockPointer();
+  },
+  lockPointer() { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* no lock here */ } },
+  fullscreen() {
+    // fullscreen + keyboard lock: Esc, Alt+Tab and the Windows key reach the game (hold Esc to leave)
+    document.documentElement.requestFullscreen().then(() => {
+      if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock().catch(() => {});
+      this.lockPointer();
+    }).catch(() => {});
+  },
+  tapKey(code) { this.queue(['k', code, 1]); this.queue(['k', code, 0]); this.flush(); },
+  look() {
+    if (this.force) return this.force === 'look';
+    return !this.frame || this.frame.look !== false;
   },
 
   makeDecoder() {
@@ -76,6 +119,7 @@ const HOST = {
     const dv = new DataView(buf), hl = dv.getUint32(0, true);
     const hdr = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)));
     const data = new Uint8Array(buf, 4 + hl, hdr.dlen !== undefined ? hdr.dlen : buf.byteLength - 4 - hl);
+    if (hdr.type === 'audio') { this.onAudio(data, hdr); return; }
     if (hdr.hud) this.loadHud(new Uint8Array(buf, 4 + hl + hdr.hud.off, hdr.hud.len), hdr.hud.w, hdr.hud.h);
     hdr.tRecv = tRecv; hdr.nbytes = buf.byteLength;
     this.arrivals.push(performance.now()); if (this.arrivals.length > 120) this.arrivals.shift();
@@ -109,6 +153,13 @@ const HOST = {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, src);
     this.frame = hdr; this.haveTex = true; this.frames++;
     stats.srv = hdr.stats || {};
+    if (hdr.cur && hdr.look === false) {
+      // the game shows its pointer: start the local one where the game's is, and follow it when the game
+      // moves it by itself (not while the player is moving it)
+      const far = Math.hypot(hdr.cur[0] - this.curX, hdr.cur[1] - this.curY) > 4;
+      if (this.wasLook || (far && performance.now() - this.lastLocalMove > 400)) { this.curX = hdr.cur[0]; this.curY = hdr.cur[1]; }
+    }
+    this.wasLook = hdr.look !== false;
     if (hdr) send({ type: 'ack', id: hdr.id });
   },
 
@@ -139,7 +190,7 @@ const HOST = {
   // ---------------------------------------------------------------- display
   pendingRotation() {
     const f = this.frame, info = this.info;
-    if (!f || !this.ipr || !f.cal || f.cal.r2 < 0.5) return [0, 0];
+    if (!f || !this.ipr || !f.cal || f.cal.r2 < 0.5 || !this.look()) return [0, 0];   // menus: nothing to predict
     const px = this.sentCx - f.cx, py = this.sentCy - f.cy;   // counts the frame does not show yet
     const sx = f.cal.kx * px, sy = f.cal.ky * py;             // predicted image shift (frame pixels)
     const tanFy = Math.tan(((info.fov_v || 70) * Math.PI / 180) / 2), tanFx = tanFy * f.w / f.h;
@@ -154,8 +205,20 @@ const HOST = {
     const f = this.frame, info = this.info;
     const tanFy = Math.tan(((info.fov_v || 70) * Math.PI / 180) / 2), tanFx = tanFy * f.w / f.h;
     const os = info.overscan || 1, aspect = canvas.width / canvas.height;
-    let tDy = tanFy / os, tDx = tDy * aspect;
-    if (tDx > tanFx / os) { tDx = tanFx / os; tDy = tDx / aspect; }
+    let tDy, tDx, vp;
+    if (os <= 1.0001) {
+      // no guard band (e.g. a whole desktop): show all of the frame, letterboxed, never cropped
+      const fa = f.w / f.h;
+      vp = aspect > fa ? [Math.round((canvas.width - canvas.height * fa) / 2), 0, Math.round(canvas.height * fa), canvas.height]
+                       : [0, Math.round((canvas.height - canvas.width / fa) / 2), canvas.width, Math.round(canvas.width / fa)];
+      tDx = tanFx; tDy = tanFy;
+    } else {
+      vp = [0, 0, canvas.width, canvas.height];
+      tDy = tanFy / os; tDx = tDy * aspect;
+      if (tDx > tanFx / os) { tDx = tanFx / os; tDy = tDx / aspect; }
+    }
+    this.vp = vp; this.tD = [tDx / tanFx, tDy / tanFy];
+    gl.viewport(vp[0], vp[1], vp[2], vp[3]);
     const [yaw, pitch] = this.pendingRotation();
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
     // R = Ryaw * Rpitch, column-major (display ray -> frame ray)
@@ -171,10 +234,84 @@ const HOST = {
     return [yaw, pitch];
   },
 
+  // ---------------------------------------------------------------- display <-> frame coordinates
+  toFrame(clientX, clientY) {
+    const r = canvas.getBoundingClientRect(), f = this.frame || this.info, vp = this.vp;
+    const px = (clientX - r.left) * canvas.width / r.width, gy = canvas.height - (clientY - r.top) * canvas.height / r.height;
+    const u = 2 * (px - vp[0]) / vp[2] - 1, v = 2 * (gy - vp[1]) / vp[3] - 1;
+    return [(u * this.tD[0] * 0.5 + 0.5) * f.w, (0.5 - v * this.tD[1] * 0.5) * f.h];
+  },
+  toCss(fx, fy) {
+    const r = canvas.getBoundingClientRect(), f = this.frame || this.info, vp = this.vp;
+    const u = (fx / f.w - 0.5) * 2 / this.tD[0], v = (0.5 - fy / f.h) * 2 / this.tD[1];
+    const px = vp[0] + (u + 1) / 2 * vp[2], gy = vp[1] + (v + 1) / 2 * vp[3];
+    return [r.left + px * r.width / canvas.width, r.top + (canvas.height - gy) * r.height / canvas.height];
+  },
+  // cursor mode with the mouse captured: move the local pointer by the mouse's motion, send its position
+  moveCursor(mx, my) {
+    const r = canvas.getBoundingClientRect(), f = this.frame || this.info;
+    const k = (canvas.width / r.width) * f.w * this.tD[0] / this.vp[2];      // frame px per CSS px
+    this.curX = Math.min(Math.max(this.curX + mx * k, 0), f.w - 1);
+    this.curY = Math.min(Math.max(this.curY + my * k, 0), f.h - 1);
+    this.lastLocalMove = performance.now();
+    this.pointTo(this.curX, this.curY);
+  },
+  pointTo(fx, fy) {
+    this.batch = this.batch.filter((e) => e[0] !== 'a');                    // only the newest position matters
+    this.queue(['a', Math.round(fx), Math.round(fy)]);
+  },
+  drawCursor() {
+    const locked = document.pointerLockElement === canvas;
+    const show = this.started && locked && !this.look();
+    this.curEl.style.display = show ? 'block' : 'none';
+    if (show) { const [x, y] = this.toCss(this.curX, this.curY); this.curEl.style.transform = `translate(${x - 1}px, ${y - 1}px)`; }
+    this.tools.style.display = this.started && !locked && !document.fullscreenElement ? 'flex' : 'none';
+    canvas.style.cursor = this.started && !locked && this.look() ? 'crosshair' : 'default';
+  },
+
+  // ---------------------------------------------------------------- audio (Opus via WebCodecs)
+  startAudio() {
+    if (this.audio || typeof AudioDecoder === 'undefined') { if (!this.audio) this.aStats.state = 'no AudioDecoder in this browser'; return; }
+    const ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 });
+    const a = { ctx, next: 0, dec: null };
+    a.dec = new AudioDecoder({
+      output: (ad) => {
+        const n = ad.numberOfFrames, ch = ad.numberOfChannels, buf = ctx.createBuffer(ch, n, ad.sampleRate);
+        let e = 0;
+        for (let c = 0; c < ch; c++) {
+          const tmp = new Float32Array(n); ad.copyTo(tmp, { planeIndex: c, format: 'f32-planar' });
+          buf.copyToChannel(tmp, c); for (let i = 0; i < n; i += 4) e += tmp[i] * tmp[i];
+        }
+        ad.close();
+        this.aStats.decoded++; this.aStats.rms = Math.sqrt(e / (ch * n / 4));
+        // jitter buffer: play 60 ms behind arrival; resynchronise if it runs dry or grows past 250 ms
+        const now = ctx.currentTime;
+        if (a.next < now + 0.01 || a.next > now + 0.25) { if (a.next > now + 0.25) this.aStats.dropped++; a.next = now + 0.06; }
+        // the host's and the browser's audio clocks drift apart over long sessions: while more than 140 ms is
+        // queued, play 1 % faster (inaudible) instead of letting the delay grow or dropping sound
+        const rate = a.next - now > 0.14 ? 1.01 : 1.0;
+        const src = ctx.createBufferSource(); src.buffer = buf; src.playbackRate.value = rate;
+        src.connect(ctx.destination); src.start(a.next);
+        a.next += buf.duration / rate; this.aStats.bufMs = Math.round((a.next - now) * 1000);
+      },
+      error: (e) => { this.aStats.state = 'decoder error: ' + e.message; },
+    });
+    a.dec.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 2 });
+    this.audio = a; this.aStats.state = 'on';
+  },
+  onAudio(data, hdr) {
+    this.aStats.packets++;
+    const a = this.audio;
+    if (!a || a.dec.state !== 'configured') return;
+    if (a.ctx.state === 'suspended') a.ctx.resume();
+    a.dec.decode(new EncodedAudioChunk({ type: 'key', timestamp: Math.round(hdr.ts * 1e6 / 48000), data }));
+  },
+
   // ---------------------------------------------------------------- per display refresh
   tick(now) {
     const t0 = performance.now();
     const rot = this.render();
+    this.drawCursor();
     const t1 = performance.now();
     if (TEST && this.probeEach) {
       const row = this.row();
@@ -197,7 +334,9 @@ const HOST = {
     const mbps = this.bytes.filter(([t]) => now - t < 1000).reduce((a, [, b]) => a + b, 0) * 8 / 1e6;
     const c = f.cal || {};
     const [yaw] = this.pendingRotation();
-    return `<b>GAME HOST</b> ${this.info.encoder}  [Alt+P: prediction ${this.ipr ? "ON" : "OFF"}]\n` +
+    const a = this.aStats, mode = this.look() ? 'look (predicted)' : 'cursor (local pointer)';
+    return `<b>GAME HOST</b> ${this.info.encoder}  [Alt+P: prediction ${this.ipr ? "ON" : "OFF"}]  [Alt+L: mode ${this.force || 'auto'}]\n` +
+      `pointer: ${mode}   audio: ${a.state}${a.decoded ? `, ${a.bufMs} ms buffered` : ''}\n` +
       `stream ${fps} fps  ${mbps.toFixed(1)} Mbit/s   rtt ${stats.rtt.toFixed(0)} ms\n` +
       `calibration  ${(c.kx || 0).toFixed(2)} / ${(c.ky || 0).toFixed(2)} px per count, lag ${c.lag_ms || 0} ms, fit ${(c.r2 || 0).toFixed(2)}\n` +
       `pending counts ${this.sentCx - (f.cx || 0)}, ${this.sentCy - (f.cy || 0)}  -> predicted turn ${(yaw * 180 / Math.PI).toFixed(1)} deg\n` +
@@ -215,18 +354,53 @@ function rowShift(a, b) {           // integer shift of b relative to a (content
   return best;
 }
 
-// input routing: in host mode raw events go to the game; shell-mode handlers in client.js ignore them
-addEventListener('mousemove', (e) => { if (HOST.active && (document.pointerLockElement === canvas)) HOST.mouse(e.movementX, e.movementY); });
+// input routing: in host mode every event goes to the game.  Captured mouse: relative counts while the game
+// looks around, the local pointer while it shows menus.  Uncaptured mouse: absolute positions and clicks, so
+// launchers, menus and the desktop work without the pointer lock.
+const startEl_ = document.getElementById('start');
+startEl_.addEventListener('click', () => { if (HOST.active) HOST.begin(); });
+const locked = () => document.pointerLockElement === canvas;
+addEventListener('mousemove', (e) => {
+  if (!HOST.active || !HOST.started) return;
+  if (locked()) { if (HOST.look()) HOST.mouse(e.movementX, e.movementY); else HOST.moveCursor(e.movementX, e.movementY); }
+  else if (e.target === canvas) { const [x, y] = HOST.toFrame(e.clientX, e.clientY); HOST.curX = x; HOST.curY = y; HOST.pointTo(x, y); }
+});
+addEventListener('mousedown', (e) => {
+  if (!HOST.active || !HOST.started) return;
+  if (!locked()) {
+    if (e.target !== canvas) return;
+    if (HOST.look()) { HOST.lockPointer(); return; }              // the game wants the mouse: capture it
+    const [x, y] = HOST.toFrame(e.clientX, e.clientY); HOST.pointTo(x, y);
+  }
+  HOST.queue(['b', e.button, 1]); HOST.flush(); e.preventDefault();
+});
+addEventListener('mouseup', (e) => {
+  if (!HOST.active || !HOST.started) return;
+  if (!locked() && e.target !== canvas) return;
+  HOST.queue(['b', e.button, 0]); HOST.flush();
+});
+addEventListener('wheel', (e) => {
+  if (!HOST.active || !HOST.started) return;
+  if (e.deltaY) HOST.queue(['w', Math.sign(e.deltaY)]);
+  if (e.deltaX) HOST.queue(['wh', Math.sign(e.deltaX)]);
+}, { passive: true });
 addEventListener('keydown', (e) => {
-  if (!HOST.active || e.repeat) return;
-  if (e.code === 'KeyP' && e.altKey) { HOST.ipr = !HOST.ipr; return; }
-  if (e.code === 'Escape') return;                       // the browser uses Escape to release the mouse
+  if (!HOST.active || !HOST.started || e.repeat) return;
+  if (e.altKey && e.code === 'KeyP') { HOST.ipr = !HOST.ipr; return; }
+  if (e.altKey && e.code === 'KeyL') { HOST.force = { null: 'look', look: 'cursor', cursor: null }[HOST.force]; return; }
+  // Esc with the mouse captured releases it (the browser's rule) unless fullscreen keyboard lock is on;
+  // uncaptured, Esc goes to the game like every other key
+  if (e.code === 'Escape' && locked() && !(document.fullscreenElement && navigator.keyboard)) return;
   HOST.queue(['k', e.code, 1]); e.preventDefault();
 });
-addEventListener('keyup', (e) => { if (HOST.active && e.code !== 'Escape') { HOST.queue(['k', e.code, 0]); e.preventDefault(); } });
-addEventListener('mousedown', (e) => { if (HOST.active && document.pointerLockElement === canvas) HOST.queue(['b', e.button, 1]); });
-addEventListener('mouseup', (e) => { if (HOST.active && document.pointerLockElement === canvas) HOST.queue(['b', e.button, 0]); });
-addEventListener('wheel', (e) => { if (HOST.active) HOST.queue(['w', Math.sign(e.deltaY)]); }, { passive: true });
+addEventListener('keyup', (e) => {
+  if (!HOST.active || !HOST.started) return;
+  HOST.queue(['k', e.code, 0]); e.preventDefault();
+});
+addEventListener('blur', () => {
+  // the browser lost focus with keys held: release everything so the game doesn't keep walking
+  if (HOST.active && HOST.started) for (const c of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ControlLeft']) HOST.queue(['k', c, 0]);
+});
 
 Object.assign(window.SS, {
   host: HOST,
@@ -236,4 +410,5 @@ Object.assign(window.SS, {
     HOST.tInj = performance.now(); return HOST.tInj;
   },
   hostKey(code, down) { HOST.queue(['k', code, down ? 1 : 0]); HOST.flush(); },
+  hostBegin() { HOST.begin(); },     // test hook: what the start click does
 });

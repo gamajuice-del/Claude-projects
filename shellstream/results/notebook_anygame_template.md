@@ -32,9 +32,10 @@ python shellstream/server.py --game <game command line> --launcher "vglrun -d eg
 * Kaggle's Acceptable Use Policy is quoted as prohibiting "activity unrelated to ML data science". Hosting
   a game is exactly that, so this notebook doesn't do it. Kaggle kernels also have no display server or
   GPU graphics drivers to run a game with.
-* **Roblox has no Linux client.** Its official clients are Windows, macOS and mobile. The legitimate cloud
-  route is a Windows VM with a T4 running the official client. That needs a Windows capture and input
-  backend for the host (DXGI desktop duplication, SendInput or a virtual HID driver), which is **not built**
-  in this proof of concept; the rest (calibration, HUD mask, NVENC, browser client) carries over unchanged.
-  An unofficial Linux route exists (Sober, which runs the Android build). Check Roblox's terms before using
-  it.
+* **Roblox has no Linux client**, so it can't run in a Kaggle kernel at all.
+* **Roblox, playable online, on a machine with the same two T4s:** a Windows VM (Google Cloud attaches two T4s
+  to one VM) running the official client. The game renders on T4 #0, NVENC on T4 #1 encodes, and the game host
+  streams the whole desktop with mouse-look prediction, a locally drawn menu pointer, scan-code keyboard, game
+  audio (Opus), 60 fps, HTTPS and an access token. One command sets it up: `windows/setup.ps1`; the guide is
+  `windows/README.md`. Tested on Linux against an unmodified game (menus, pointer modes, audio, TLS); the
+  Windows backend is unit-tested but wasn't run on Windows or with Roblox here.

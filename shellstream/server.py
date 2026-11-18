@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import hmac
 import json
 import math
 import os
@@ -172,7 +173,27 @@ class Session:
 class HostSession(Session):
     """Game-host mode: input events are injected into the game the moment they arrive (after the emulated
     uplink delay); frames are captured at a fixed rate, skipped when identical, and never dropped after
-    encoding (video frames reference each other), so flow control acts *before* capture."""
+    encoding (video frames reference each other), so flow control acts *before* capture.  Game audio, if
+    enabled, travels beside the frames as Opus packets, outside the frame flow control."""
+
+    def __init__(self, server, handler):
+        self.audio = None
+        super().__init__(server, handler)
+        if server.audio:
+            try:
+                import host_audio
+
+                def on_packet(data, pts, h=handler):
+                    hb = json.dumps({"type": "audio", "ts": pts, "dlen": len(data)}, separators=(",", ":")).encode()
+                    server.send(h, len(hb).to_bytes(4, "little") + hb + data, binary=True)
+                self.audio = host_audio.AudioCapture(on_packet)
+            except Exception as e:                  # no audio device or library: video still works
+                self.send_text({"type": "error", "msg": f"audio unavailable: {e!r}"})
+
+    def close(self):
+        super().close()
+        if self.audio:
+            self.audio.stop()
 
     def on_message(self, msg: dict):
         typ = msg.get("type")
@@ -224,9 +245,28 @@ class HostSession(Session):
             srv.send(self.h, msg, binary=True)
 
 
+def _token_ok(handler):
+    """The game host gives whoever connects the machine's mouse and keyboard, so a server reachable from other
+    machines requires a token: once in the URL (?token=...), then as an HttpOnly, SameSite=Strict cookie."""
+    tok = handler.server.token
+    if not tok:
+        return True
+    given = handler.get_argument("token", None)
+    if given is not None and hmac.compare_digest(given.encode(), tok.encode()):
+        handler.set_cookie("ss_token", tok, httponly=True, samesite="Strict",
+                           secure=handler.request.protocol == "https", expires_days=1)
+        return True
+    c = handler.get_cookie("ss_token")
+    return c is not None and hmac.compare_digest(c.encode(), tok.encode())
+
+
 class WSHandler(tornado.websocket.WebSocketHandler):
     def initialize(self, server):
         self.server = server
+
+    def prepare(self):
+        if not _token_ok(self):
+            raise tornado.web.HTTPError(403)
 
     def check_origin(self, origin):
         return True
@@ -252,6 +292,14 @@ class WSHandler(tornado.websocket.WebSocketHandler):
 
 
 class NoCache(tornado.web.StaticFileHandler):
+    def initialize(self, server=None, **kw):
+        self.server = server
+        super().initialize(**kw)
+
+    def prepare(self):
+        if self.server is not None and not _token_ok(self):
+            raise tornado.web.HTTPError(403)
+
     def set_extra_headers(self, path):
         self.set_header("Cache-Control", "no-store")
 
@@ -259,6 +307,10 @@ class NoCache(tornado.web.StaticFileHandler):
 class StatsHandler(tornado.web.RequestHandler):
     def initialize(self, server):
         self.server = server
+
+    def prepare(self):
+        if not _token_ok(self):
+            raise tornado.web.HTTPError(403)
 
     def get(self):
         s = self.server.session
@@ -268,8 +320,10 @@ class StatsHandler(tornado.web.RequestHandler):
 
 class ShellServer:
     def __init__(self, builder, port=8765, max_rate=30.0, idle_interval=0.5, max_inflight=2,
-                 net: NetEmu | None = None, animate=True, address="127.0.0.1", max_refine=2, refine_delay=0.15):
+                 net: NetEmu | None = None, animate=True, address="127.0.0.1", max_refine=2, refine_delay=0.15,
+                 token=None, ssl_ctx=None, audio=False):
         self.builder = builder
+        self.token, self.ssl_ctx, self.audio = token, ssl_ctx, audio
         self.max_refine, self.refine_delay = max_refine, refine_delay
         self.port = port
         self.address = address
@@ -301,9 +355,9 @@ class ShellServer:
         app = tornado.web.Application([
             (r"/ws", WSHandler, dict(server=self)),
             (r"/stats", StatsHandler, dict(server=self)),
-            (r"/(.*)", NoCache, dict(path=CLIENT_DIR, default_filename="index.html")),
+            (r"/(.*)", NoCache, dict(server=self, path=CLIENT_DIR, default_filename="index.html")),
         ], websocket_max_message_size=1 << 20, compress_response=False)
-        self.http = app.listen(self.port, address=self.address)
+        self.http = app.listen(self.port, address=self.address, ssl_options=self.ssl_ctx)
         self.ioloop = tornado.ioloop.IOLoop.current()
         self._started.set()
         self.loop.run_forever()
@@ -359,6 +413,41 @@ class ShellServer:
         self.loop.call_soon_threadsafe(_sched)
 
 
+def self_signed_cert(dirpath=None):
+    """A self-signed certificate for --tls (kept in ~/.shellstream).  The browser warns once; compare the
+    fingerprint printed here with the one it shows."""
+    import datetime
+    import hashlib
+    import socket
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    d = dirpath or os.path.join(os.path.expanduser("~"), ".shellstream")
+    os.makedirs(d, exist_ok=True)
+    cert_p, key_p = os.path.join(d, "cert.pem"), os.path.join(d, "key.pem")
+    if not (os.path.exists(cert_p) and os.path.exists(key_p)):
+        key = ec.generate_private_key(ec.SECP256R1())
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ShellStream " + socket.gethostname())])
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+                .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(days=1))
+                .not_valid_after(now + datetime.timedelta(days=365))
+                .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost"), x509.DNSName(socket.gethostname())]),
+                               critical=False)
+                .sign(key, hashes.SHA256()))
+        with open(key_p, "wb") as f:
+            f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                      serialization.NoEncryption()))
+        os.chmod(key_p, 0o600)
+        with open(cert_p, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+    c = x509.load_pem_x509_certificate(open(cert_p, "rb").read())
+    fp = hashlib.sha256(c.public_bytes(serialization.Encoding.DER)).hexdigest().upper()
+    print("TLS certificate SHA-256 fingerprint:", ":".join(fp[i:i + 2] for i in range(0, len(fp), 2)), flush=True)
+    return cert_p, key_p
+
+
 if __name__ == "__main__":   # standalone: python server.py [--cpu] [--port 8765]
     import argparse
     import engine as E
@@ -368,7 +457,7 @@ if __name__ == "__main__":   # standalone: python server.py [--cpu] [--port 8765
     ap.add_argument("--budget", type=float, default=1.0e6)
     ap.add_argument("--omni", type=int, default=256)
     ap.add_argument("--quality", default="high")
-    ap.add_argument("--rate", type=float, default=30)
+    ap.add_argument("--rate", type=float, default=None, help="updates/frames per second (shell 30, game host 60)")
     ap.add_argument("--up", type=float, default=0); ap.add_argument("--down", type=float, default=0)
     ap.add_argument("--address", default="127.0.0.1")
     ap.add_argument("--threads", type=int, default=None)
@@ -380,21 +469,53 @@ if __name__ == "__main__":   # standalone: python server.py [--cpu] [--port 8765
     ap.add_argument("--display", default=None, help="host mode: existing X display (e.g. a GPU-backed :0); default: new Xvfb")
     ap.add_argument("--launcher", default="", help="host mode: prefix, e.g. 'vglrun -d egl0' to render the game on a T4")
     ap.add_argument("--encode-gpu", type=int, default=1, help="host mode: which T4's NVENC encodes (keep the game's GPU free)")
+    ap.add_argument("--host", action="store_true",
+                    help="host mode without launching anything: stream this machine's screen (e.g. a Windows VM running Roblox)")
+    ap.add_argument("--desktop", action="store_true", help="host mode: stream the whole screen, not just the game's window")
+    ap.add_argument("--window", default=None, help="host mode: stream only the window whose title contains this text")
+    ap.add_argument("--fps", type=float, default=None, help="host mode: capture and stream rate (default 60)")
+    ap.add_argument("--bitrate", type=float, default=None, help="host mode: H.264 Mbit/s (default about 0.1 bit per pixel)")
+    ap.add_argument("--audio", action="store_true", help="host mode: stream the machine's sound output (Opus)")
+    ap.add_argument("--token", default="auto",
+                    help="access token: 'auto' (random, required whenever --address isn't local), a value, @file, or 'none'")
+    ap.add_argument("--tls", action="store_true",
+                    help="HTTPS with a self-signed certificate (browsers decode H.264/Opus only on HTTPS or localhost)")
+    ap.add_argument("--certfile", default=None); ap.add_argument("--keyfile", default=None)
     a = ap.parse_args()
+    import secrets
+    if a.token.startswith("@"):                     # --token @file: keep it out of process listings
+        a.token = open(a.token[1:]).read().strip()
+    local = a.address in ("127.0.0.1", "localhost", "::1")
+    token = None if a.token == "none" else (secrets.token_urlsafe(18) if a.token == "auto" and not local else
+                                            (None if a.token == "auto" else a.token))
+    ssl_ctx = None
+    if a.tls or a.certfile:
+        import ssl
+        cert, key = (a.certfile, a.keyfile) if a.certfile else self_signed_cert()
+        ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ssl_ctx.load_cert_chain(cert, key)
+    scheme = "https" if ssl_ctx else "http"
+    shown = "127.0.0.1" if a.address in ("0.0.0.0", "::") else a.address
+    url = f"{scheme}://{shown}:{a.port}/" + (f"?token={token}" if token else "")
     import signal
 
     def _term(*_):                                 # SIGTERM (e.g. from a supervisor) shuts down like Ctrl+C,
         raise KeyboardInterrupt                    # so the game and its virtual display are cleaned up
     signal.signal(signal.SIGTERM, _term)
-    if a.game:
+    if a.game or a.host:
         import host as H
         w, h = (int(v) for v in a.size.split("x"))
-        cmd = H.minetest_command(os.path.abspath("minetest_run"), w, h, fov=a.fov or 90) if a.game == ["minetest"] else a.game
-        gh = H.GameHost(cmd, size=(w, h), display=a.display, fov_v=a.fov or (90 if a.game == ["minetest"] else None),
-                        overscan=a.overscan, fps=a.rate, gpu=a.encode_gpu, launcher=a.launcher.split())
-        s = ShellServer(gh, port=a.port, max_rate=a.rate, net=NetEmu(a.up, a.down), address=a.address).start()
-        print(f"ShellStream game host on http://{a.address}:{a.port}  encoder={gh.world_info()['encoder']}"
-              + (f"  (H.264 unavailable: {gh.video_error})" if getattr(gh, "video_error", None) else ""))
+        mt = a.game == ["minetest"]
+        cmd = H.minetest_command(os.path.abspath("minetest_run"), w, h, fov=a.fov or 90) if mt else a.game
+        fps = a.fps or a.rate or 60
+        gh = H.GameHost(cmd, size=(w, h), display=a.display, fov_v=a.fov or (90 if mt else None),
+                        overscan=a.overscan, fps=fps, gpu=a.encode_gpu, launcher=a.launcher.split(),
+                        bitrate=a.bitrate * 1e6 if a.bitrate else None, window_name=a.window,
+                        desktop=a.desktop or (a.host and not a.window))
+        s = ShellServer(gh, port=a.port, max_rate=fps, net=NetEmu(a.up, a.down), address=a.address,
+                        token=token, ssl_ctx=ssl_ctx, audio=a.audio).start()
+        print(f"ShellStream game host: {url}  ({gh.w}x{gh.h} at {fps:g} fps, encoder={gh.world_info()['encoder']}"
+              + (f", H.264 unavailable: {gh.video_error}" if getattr(gh, "video_error", None) else "") + ")", flush=True)
         try:
             while True:
                 time.sleep(1)
@@ -404,8 +525,9 @@ if __name__ == "__main__":   # standalone: python server.py [--cpu] [--port 8765
     n = 0 if a.cpu else E.cuda_device_count()
     bes = [E.CudaBackend(i) for i in range(min(n, 2))] if n else [E.CpuBackend(threads=a.threads)]
     b = E.ShellBuilder(bes, focus_budget=a.budget, omni_R=a.omni, quality=a.quality)
-    s = ShellServer(b, port=a.port, max_rate=a.rate, net=NetEmu(a.up, a.down), address=a.address).start()
-    print(f"ShellStream on http://{a.address}:{a.port}  backends={[x.device_name for x in bes]}")
+    s = ShellServer(b, port=a.port, max_rate=a.rate or 30, net=NetEmu(a.up, a.down), address=a.address,
+                    token=token, ssl_ctx=ssl_ctx).start()
+    print(f"ShellStream on {url}  backends={[x.device_name for x in bes]}")
     try:
         while True:
             time.sleep(1)

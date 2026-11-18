@@ -1,0 +1,22 @@
+[
+ {
+  "size": "1280x720",
+  "encoder": "libx264",
+  "fps_max": 112.7,
+  "ms_per_frame": 8.87,
+  "capture_and_state_ms": 0.71,
+  "encode_ms": 7.58,
+  "calibrated": 0.95,
+  "calibrator_ms": 3.95
+ },
+ {
+  "size": "1920x1080",
+  "encoder": "libx264",
+  "fps_max": 95.1,
+  "ms_per_frame": 10.52,
+  "capture_and_state_ms": 0.75,
+  "encode_ms": 9.18,
+  "calibrated": 1.0,
+  "calibrator_ms": 4.58
+ }
+]

@@ -15,23 +15,23 @@ Measured in the development run on an unmodified open-source game (Minetest 5.6,
 
 | emulated RTT | mouse-look latency, prediction ON | mouse-look latency, prediction OFF (classic) | image jump when the real frame lands |
 |---|---|---|---|
-| 0 ms | **13 ms** | 117 ms | 1 px |
-| 50 ms | **15 ms** | 181 ms | 1 px |
-| 100 ms | **12 ms** | 225 ms | 1 px |
-| 200 ms | **12 ms** | 329 ms | 1 px |
+| 0 ms | **12 ms** | 118 ms | 2 px |
+| 50 ms | **14 ms** | 143 ms | 1 px |
+| 100 ms | **13 ms** | 202 ms | 1 px |
+| 200 ms | **11 ms** | 284 ms | 2 px |
 
 | mouse step (counts) | turn (px at the centre) | misalignment left, stale frame | misalignment left, predicted | PSNR stale / predicted / predicted + HUD-aware |
 |---|---|---|---|---|
-| 8, 0 | 7 px | 7.0 px | **0.1 px** | 18.5 / 20.2 / **24.4** dB |
-| 20, 0 | 17 px | 18.1 px | **0.1 px** | 16.1 / 18.4 / **21.2** dB |
-| 40, 0 | 35 px | 36.0 px | **0.1 px** | 13.8 / 17.6 / **20.6** dB |
-| 80, 0 | 70 px | 75.4 px | **2.9 px** | 11.6 / 14.8 / **16.2** dB |
-| -20, 0 | 17 px | 17.9 px | **0.0 px** | 15.8 / 18.6 / **22.1** dB |
-| 0, 15 | 13 px | 15.2 px | **0.3 px** | 16.0 / 18.4 / **21.9** dB |
-| 0, -15 | 13 px | 15.2 px | **0.1 px** | 15.8 / 18.5 / **22.1** dB |
-| 25, 10 | 23 px | 25.3 px | **0.2 px** | 14.7 / 18.3 / **20.7** dB |
+| 8, 0 | 7 px | 7.0 px | **0.1 px** | 18.3 / 20.1 / **24.2** dB |
+| 20, 0 | 17 px | 18.7 px | **0.5 px** | 15.8 / 18.1 / **20.9** dB |
+| 40, 0 | 35 px | 35.2 px | **0.9 px** | 13.2 / 16.7 / **18.7** dB |
+| 80, 0 | 70 px | 103.4 px | **2.5 px** | 11.0 / 14.3 / **15.3** dB |
+| -20, 0 | 17 px | 17.1 px | **0.3 px** | 15.2 / 18.0 / **21.2** dB |
+| 0, 15 | 13 px | 16.2 px | **0.2 px** | 15.8 / 18.4 / **21.7** dB |
+| 0, -15 | 13 px | 15.0 px | **0.1 px** | 15.7 / 18.5 / **21.9** dB |
+| 25, 10 | 23 px | 24.6 px | **0.6 px** | 14.6 / 17.6 / **19.7** dB |
 
-Online calibration after 20 s of ordinary mouse-look: -0.871 / -0.851 px per count at the image centre, game lag 43 ms, fit R^2 0.996; measured directly from the large horizontal steps: -0.867, so the online fit is off by +0.5 %.
+Online calibration after 20 s of ordinary mouse-look: -0.871 / -0.851 px per count at the image centre, game lag 43 ms, fit R^2 0.996; measured directly from the large horizontal steps: -0.846, so the online fit is off by +2.9 %.
 
 Movement and in-game actions still take the round trip; only looking around is predicted.
 
@@ -48,9 +48,10 @@ python shellstream/server.py --game <game command line> --launcher "vglrun -d eg
 * Kaggle's Acceptable Use Policy is quoted as prohibiting "activity unrelated to ML data science". Hosting
   a game is exactly that, so this notebook doesn't do it. Kaggle kernels also have no display server or
   GPU graphics drivers to run a game with.
-* **Roblox has no Linux client.** Its official clients are Windows, macOS and mobile. The legitimate cloud
-  route is a Windows VM with a T4 running the official client. That needs a Windows capture and input
-  backend for the host (DXGI desktop duplication, SendInput or a virtual HID driver), which is **not built**
-  in this proof of concept; the rest (calibration, HUD mask, NVENC, browser client) carries over unchanged.
-  An unofficial Linux route exists (Sober, which runs the Android build). Check Roblox's terms before using
-  it.
+* **Roblox has no Linux client**, so it can't run in a Kaggle kernel at all.
+* **Roblox, playable online, on a machine with the same two T4s:** a Windows VM (Google Cloud attaches two T4s
+  to one VM) running the official client. The game renders on T4 #0, NVENC on T4 #1 encodes, and the game host
+  streams the whole desktop with mouse-look prediction, a locally drawn menu pointer, scan-code keyboard, game
+  audio (Opus), 60 fps, HTTPS and an access token. One command sets it up: `windows/setup.ps1`; the guide is
+  `windows/README.md`. Tested on Linux against an unmodified game (menus, pointer modes, audio, TLS); the
+  Windows backend is unit-tested but wasn't run on Windows or with Roblox here.

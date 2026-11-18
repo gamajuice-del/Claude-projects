@@ -444,6 +444,7 @@ const game = {
 const keys = {};
 let pendYaw = 0, pendPitch = 0, oldestInputT = null;
 addEventListener('keydown', (e) => {
+  if (typeof HOST !== 'undefined' && HOST.active) return;      // game-host mode: every key belongs to the game
   keys[e.code] = true;
   if (e.code === 'Digit1') setMode('shell'); if (e.code === 'Digit2') setMode('classic');
   if (e.code === 'Digit3') setMode('rot'); if (e.code === 'Digit4') setMode('noback');
@@ -458,7 +459,11 @@ addEventListener('mousemove', (e) => {
 });
 const startEl = document.getElementById('start');
 startEl.addEventListener('click', () => { canvas.requestPointerLock(); game.frozen = false; });
-document.addEventListener('pointerlockchange', () => { startEl.style.display = document.pointerLockElement === canvas || TEST ? 'none' : 'flex'; });
+document.addEventListener('pointerlockchange', () => {
+  // game-host mode stays usable without the pointer lock (menus take absolute clicks), so no overlay there
+  const host = typeof HOST !== 'undefined' && HOST.active && HOST.started;
+  startEl.style.display = document.pointerLockElement === canvas || TEST || host ? 'none' : 'flex';
+});
 if (TEST) startEl.style.display = 'none';
 function setMode(m) { MODE = m; }
 

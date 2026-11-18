@@ -85,6 +85,32 @@ def main():
         HOST_ON=f"{min(r['latency_ms_median'] for r in on):.0f}-{max(r['latency_ms_median'] for r in on):.0f}",
         HOST_OFF=f"{min(r['latency_ms_median'] for r in off):.0f}-{max(r['latency_ms_median'] for r in off):.0f}",
     )
+    # ---- pass 3: Roblox-capable host (full control, audio, fps)
+    Hf = load("host_full.json") if os.path.exists(os.path.join(RESULTS, "host_full.json")) else None
+    Hp = load("host_fps.json") if os.path.exists(os.path.join(RESULTS, "host_fps.json")) else None
+    if Hf:
+        m, a = Hf["pointer_modes"], Hf.get("audio") or {}
+        rows = [("access without / with a wrong / with the token",
+                 f"{Hf['http_status']['no token']} / {Hf['http_status']['wrong token']} / {Hf['http_status']['token']}"),
+                ("HTTPS (self-signed): secure context, video codec",
+                 f"{'yes' if Hf['browser']['secure'] else 'no'}, {Hf['browser']['codec'].upper()} via WebCodecs"),
+                ("in the game", f"pointer hidden -> {'look' if m['in game']['look'] else 'pointer'} mode"),
+                ("Esc (pause menu)", f"pointer shown at {m['pause menu']['cur']} -> "
+                                     f"{'look' if m['pause menu']['look'] else 'pointer'} mode, prediction off"),
+                ("move the local pointer to \"Continue\"", f"game's pointer at {m['pointer moved to Continue']['cur']}"),
+                ("click", f"menu closes -> {'look' if m['after clicking Continue']['look'] else 'pointer'} mode"),
+                ("local pointer, display <-> game round trip", f"{Hf['pointer_mapping_err_px']:.3f} px")]
+        if a:
+            rows.append(("audio (440 Hz tone on the host)", f"{a['decoded']} packets decoded in the browser, level "
+                         f"{a['rms']:.3f} RMS (sent: 0.212), {a['bufMs']} ms buffered, {a['dropped']} resyncs"))
+        S["HOST_FULL"] = ("**Full remote control of an unmodified game** (Minetest standing in for Roblox; "
+                          "`bench/host_full.py`, " + ("all checks pass" if Hf.get("all_ok") else "**some checks failed**") +
+                          "):\n\n| step | result |\n|---|---|\n" + "\n".join(f"| {k} | {v} |" for k, v in rows))
+    if Hp:
+        S["HOST_FPS"] = ("| frame | max fps | encode (x264) | capture + pointer state | calibrator (own thread) |\n|---|---|---|---|---|\n"
+                         + "\n".join(f"| {r['size']} | **{r['fps_max']:.0f}** | {r['encode_ms']:.1f} ms | "
+                                      f"{r['capture_and_state_ms']:.1f} ms | {r['calibrator_ms']:.1f} ms, kept up with "
+                                      f"{100 * r['calibrated']:.0f} % of frames |" for r in Hp))
     tpl = open(os.path.join(RESULTS, "report_results_template.md")).read()
     pass2 = open(os.path.join(RESULTS, "report_pass2.md")).read()
     for k, v in T.items():

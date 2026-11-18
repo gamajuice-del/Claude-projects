@@ -149,3 +149,54 @@ hedges out of them: forward 0.5 m {{SINGLEFWD}} vs. {{DUALFWD}} dB, jump 0.5 m {
 None of these were timed on a T4 here (no GPU in this sandbox). The notebook's section 3b measures GPU
 busy percentages, the governor's converged budget, pipelined vs. sequential throughput and NVENC speed on
 Kaggle's T4s.
+
+## 13. Roblox, playable online, on a 2x T4 Windows machine
+
+### 13.1 The route
+
+Kaggle can't host it (section 11.5). A Windows machine with the same two T4s can, and Google Cloud attaches
+two T4s to one VM. On it, the **official Roblox client** renders on T4 #0, NVENC on T4 #1 encodes, and the game
+host streams the whole desktop. You sign in and join games online as on any PC. `windows/setup.ps1` prepares
+such a machine in one command; `windows/README.md` is the step-by-step guide.
+
+What this pass added, on top of the pass-2 game host:
+
+* **Windows backend** (`host_win.py`). DXGI Desktop Duplication through dxcam (GDI fallback); SendInput with
+  relative counts, absolute positions, all mouse buttons, both wheels, and keys as hardware scan codes;
+  pointer state from `GetCursorInfo` and the cursor clip rectangle.
+* **Pointer modes.** Games hide or pin the pointer while it turns the camera, and show it in menus. The host
+  reports which, every frame, on Windows and Linux (XFixes). *Look* mode sends relative counts and predicts
+  them. *Pointer* mode draws the pointer locally at display rate and sends absolute positions, so menus feel
+  local too. The calibrator learns only from look-mode frames, since counts in menus move a pointer, not the
+  camera. Without the pointer captured, plain clicks work as well.
+* **Audio** (`host_audio.py`). The default output's loopback (WASAPI; PulseAudio monitor on Linux), Opus
+  20 ms packets in low-delay mode, WebCodecs decode, a jitter buffer that plays 1 % faster while more than
+  140 ms is queued.
+* **Frame rate.** 60 fps by default and about 0.1 bit per pixel (1080p60: 12 Mbit/s). The calibrator moved to
+  its own thread, and its sampling grid scales with the frame, so 1080p costs what 640x360 does.
+* **Access.** A server reachable from other machines requires a token (URL once, then an HttpOnly cookie).
+  `--tls` serves HTTPS with a self-signed certificate. That is also needed for speed, because browsers offer
+  WebCodecs only on HTTPS or localhost; without it they fall back to JPEG.
+
+### 13.2 Measured here (Linux stand-in, no GPU)
+
+{{HOST_FULL}}
+
+**Throughput of the host pipeline** (pointer state, calibrator hand-off, change detection, H.264 encode; x264 on
+4 CPU cores standing in for NVENC; synthetic panning source):
+
+{{HOST_FPS}}
+
+Encoding is the whole bottleneck here; on the T4 machine NVENC takes it, and the notebook's NVENC cell measures
+how fast. These CPU numbers are rough: the cores are shared, and an earlier run of the same benchmark reached
+59 fps at 1080p. The Windows backend's input records and pointer logic pass unit tests against a simulated `user32`
+(`tests/test_host_win.py`: structure layout, scan codes, absolute coordinates on a multi-monitor desktop,
+buttons, wheels, pointer state).
+
+### 13.3 Not verified
+
+No Windows machine, GPU or Roblox account was available. Untested: the Windows backend against real Windows
+APIs, DXGI capture, WASAPI loopback, NVENC on Windows, the setup script (reviewed by hand, never run or parsed),
+and Roblox itself. Roblox's anti-cheat may treat injected input or virtual machines differently from a desk PC.
+If it ignores injected input, a virtual HID driver would be needed, which isn't built. Roblox's terms of use
+apply as on any PC.

@@ -32,7 +32,9 @@ with the open-source game Minetest). It injects your input, encodes with NVENC, 
 image moves per mouse count and which pixels are HUD. The browser then predicts mouse-look locally for a
 game it knows nothing about (section 11, which also covers Roblox). **Both T4s fully:** each T4 now renders
 a complete shell from its own viewpoint, the browser composites them, and GPU stages overlap host stages,
-with a load governor, idle refinement and NVENC (section 12).
+with a load governor, idle refinement and NVENC (section 12). **Pass 3** makes Roblox playable online:
+the official client on a Windows machine with two T4s, with full desktop control, game audio, 60 fps, HTTPS
+and an access token, set up by one script (section 13).
 
 Looking, moving, jumping and picking things up therefore have the *latency* of a local PC: about one
 display frame. Network RTT, jitter and even multi-second stalls only affect how *fresh* the lighting

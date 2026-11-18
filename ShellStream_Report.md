@@ -32,7 +32,9 @@ with the open-source game Minetest). It injects your input, encodes with NVENC, 
 image moves per mouse count and which pixels are HUD. The browser then predicts mouse-look locally for a
 game it knows nothing about (section 11, which also covers Roblox). **Both T4s fully:** each T4 now renders
 a complete shell from its own viewpoint, the browser composites them, and GPU stages overlap host stages,
-with a load governor, idle refinement and NVENC (section 12).
+with a load governor, idle refinement and NVENC (section 12). **Pass 3** makes Roblox playable online:
+the official client on a Windows machine with two T4s, with full desktop control, game audio, 60 fps, HTTPS
+and an access token, set up by one script (section 13).
 
 Looking, moving, jumping and picking things up therefore have the *latency* of a local PC: about one
 display frame. Network RTT, jitter and even multi-second stalls only affect how *fresh* the lighting
@@ -49,7 +51,7 @@ short of one (section 4.4).
 | image after a 30-degree turn (PSNR vs. 16-spp truth) | **29.0 dB** (local 1-spp render: 29.7) | 12.5 dB (stale frame) |
 | image after a 0.5 m strafe | **25.7 dB** with both T4s (19.7 with one shell; naive depth warp 19.1) | 13.8 dB |
 | inside regions newly revealed by a 0.5 m strafe | **22.5 dB** both T4s (16.0 one shell; naive 12.8, no band 9.8) | 10.7 dB |
-| **any unmodified game** (Minetest via the game host): mouse-look latency, RTT 0 to 200 ms | **12-15 ms** with input-predicted reprojection (lower than the row above only because this client draws a single textured quad, which software rendering finishes sooner) | 117-329 ms |
+| **any unmodified game** (Minetest via the game host): mouse-look latency, RTT 0 to 200 ms | **11-14 ms** with input-predicted reprojection (lower than the row above only because this client draws a single textured quad, which software rendering finishes sooner) | 118-284 ms |
 | T4 time per update (modelled; measured by the notebook) | 11.2 ms on 2 T4s (22.3 on one) | 37.9 ms per 1080p frame on one T4 |
 | bytes per update, 1080p client | 367 KiB (JPEG; about 4x less colour with NVENC-class video) | 193 KiB |
 
@@ -505,7 +507,7 @@ The design above is the fourth iteration. Every change below was triggered by a 
 | 23 | Compositing every shell lost 0.1-0.5 dB on rotations and jumps while gaining up to 6 dB sideways | Hedges 0.45 m away overrode pixels the primary shell or its omni get right (view-dependent reflections) | A secondary shell is used only when its centre is within 0.15 m of the primary's distance, after >0.15 m of movement | No pose loses PSNR any more (rotations, forward, jump identical to one shell); sideways gains kept (+6.0 dB at 0.5 m). The +0.3 dB forward gain is given up |
 | 24 | With the HUD mask, browser look latency with prediction was no better than without (107 vs. 115 ms) | The mask counted every block that stayed unchanged while the view turned as overlay, including plain sky and flat terrain (24.5 % of the screen). The browser left those pixels unwarped, and the latency probe row lay in them | Only blocks that discriminate vote: a changed block is world; an unchanged block is overlay only if moving it with the world would have visibly changed it; plain blocks don't vote | Mask now covers just the version line, chat, crosshair, hearts, hotbar and hand; the view moves on the first display frame after input |
 | 25 | The next browser run showed no prediction at all | The calibration fit was 0.37, so the client switched prediction off, as designed. Cause: the test world kept its in-game clock between runs and had reached night (21:56); dark frames don't correlate, and each new poor fit overwrote the good one | Test world starts at 10:00 with the clock stopped. The calibrator keeps a good fit until a new window fits well or better, since pixels per count don't drift | Prediction survives dark stretches, menus and blank walls once calibrated |
-| 26 | Calibrated px/count differed by 12 % between two runs of the same game (-0.82 vs. -0.93), and the fit sat 5 % above a direct measurement | At a 90° vertical (121° horizontal) field of view a turn moves the view's edges up to 3x as far as its centre, so one shift fitted over a wide crop depends on where the texture is. Summing per-frame shifts over a window also accumulated their sub-pixel bias | Resample the crop to azimuth/elevation before phase correlation (one map per axis), so kx, ky are the rotation per count in centre pixels (same wire format). Measure each window's shift in one correlation | Synthetic views with a known rotation (`host_calib.py`): error +5.1/+12.6 % (horizontal/vertical) -> +3.0/-1.7 %. On the game: online fit within 0.5 % of the direct measurement; residual misalignment 0.03-0.27 px for steps up to 36 px |
+| 26 | Calibrated px/count differed by 12 % between two runs of the same game (-0.82 vs. -0.93), and the fit sat 5 % above a direct measurement | At a 90° vertical (121° horizontal) field of view a turn moves the view's edges up to 3x as far as its centre, so one shift fitted over a wide crop depends on where the texture is. Summing per-frame shifts over a window also accumulated their sub-pixel bias | Resample the crop to azimuth/elevation before phase correlation (one map per axis), so kx, ky are the rotation per count in centre pixels (same wire format). Measure each window's shift in one correlation | Synthetic views with a known rotation (`host_calib.py`): error +5.1/+12.6 % (horizontal/vertical) -> +3.0/-1.7 %. On the game: online fit within 0.5 % and 2.9 % of the direct measurement in two runs; residual misalignment under 1 px for steps up to 36 px |
 
 ## 6. Kaggle: what this uses, and what is permitted
 
@@ -654,7 +656,7 @@ play**, with no knowledge of the game:
   windows for several candidate lags. Two earlier versions were biased. A per-frame fit was off by ±15 %
   when the game renders slower than it's captured. A fit in plain pixels depended on where the texture
   happened to be, because a turn moves the edges of a 121°-wide view up to three times as far as the
-  centre. In the final run the online fit is within 0.5 % of the rotation measured directly from
+  centre. In the final run the online fit is within 2.9 % of the rotation measured directly from
   large steps.
 * **Screen-fixed overlay.** While the world measurably moves, pixels that don't change are HUD, crosshair,
   chat or the first-person hand. Only blocks that can tell the two apart count. A block that changed is
@@ -678,31 +680,31 @@ point):
 
 | emulated RTT | mouse-look latency, prediction ON | mouse-look latency, prediction OFF (classic) | image jump when the real frame lands |
 |---|---|---|---|
-| 0 ms | **13 ms** | 117 ms | 1 px |
-| 50 ms | **15 ms** | 181 ms | 1 px |
-| 100 ms | **12 ms** | 225 ms | 1 px |
-| 200 ms | **12 ms** | 329 ms | 1 px |
+| 0 ms | **12 ms** | 118 ms | 2 px |
+| 50 ms | **14 ms** | 143 ms | 1 px |
+| 100 ms | **13 ms** | 202 ms | 1 px |
+| 200 ms | **11 ms** | 284 ms | 2 px |
 
 **Step response**: the game at rest is captured, a known mouse movement is injected, and the frame the game
 then renders is compared with the prediction made from the first frame:
 
 | mouse step (counts) | turn (px at the centre) | misalignment left, stale frame | misalignment left, predicted | PSNR stale / predicted / predicted + HUD-aware |
 |---|---|---|---|---|
-| 8, 0 | 7 px | 7.0 px | **0.1 px** | 18.5 / 20.2 / **24.4** dB |
-| 20, 0 | 17 px | 18.1 px | **0.1 px** | 16.1 / 18.4 / **21.2** dB |
-| 40, 0 | 35 px | 36.0 px | **0.1 px** | 13.8 / 17.6 / **20.6** dB |
-| 80, 0 | 70 px | 75.4 px | **2.9 px** | 11.6 / 14.8 / **16.2** dB |
-| -20, 0 | 17 px | 17.9 px | **0.0 px** | 15.8 / 18.6 / **22.1** dB |
-| 0, 15 | 13 px | 15.2 px | **0.3 px** | 16.0 / 18.4 / **21.9** dB |
-| 0, -15 | 13 px | 15.2 px | **0.1 px** | 15.8 / 18.5 / **22.1** dB |
-| 25, 10 | 23 px | 25.3 px | **0.2 px** | 14.7 / 18.3 / **20.7** dB |
+| 8, 0 | 7 px | 7.0 px | **0.1 px** | 18.3 / 20.1 / **24.2** dB |
+| 20, 0 | 17 px | 18.7 px | **0.5 px** | 15.8 / 18.1 / **20.9** dB |
+| 40, 0 | 35 px | 35.2 px | **0.9 px** | 13.2 / 16.7 / **18.7** dB |
+| 80, 0 | 70 px | 103.4 px | **2.5 px** | 11.0 / 14.3 / **15.3** dB |
+| -20, 0 | 17 px | 17.1 px | **0.3 px** | 15.2 / 18.0 / **21.2** dB |
+| 0, 15 | 13 px | 16.2 px | **0.2 px** | 15.8 / 18.4 / **21.7** dB |
+| 0, -15 | 13 px | 15.0 px | **0.1 px** | 15.7 / 18.5 / **21.9** dB |
+| 25, 10 | 23 px | 24.6 px | **0.6 px** | 14.6 / 17.6 / **19.7** dB |
 
-Online calibration after 20 s of ordinary mouse-look: -0.871 / -0.851 px per count at the image centre, game lag 43 ms, fit R^2 0.996; measured directly from the large horizontal steps: -0.867, so the online fit is off by +0.5 %.
+Online calibration after 20 s of ordinary mouse-look: -0.871 / -0.851 px per count at the image centre, game lag 43 ms, fit R^2 0.996; measured directly from the large horizontal steps: -0.846, so the online fit is off by +2.9 %.
 
-* Prediction removes nearly all of the motion: 7, 18, 36 and 75 px turns leave 0.1, 0.1, 0.1 and 2.9 px, where the stale frame is off by the full turn.
-* HUD-aware prediction also beats the stale frame on PSNR at every step size (+4.6 to +6.7 dB).
+* Prediction removes nearly all of the motion: 7, 19, 35 and 103 px turns leave 0.1, 0.5, 0.9 and 2.5 px, where the stale frame is off by the full turn.
+* HUD-aware prediction also beats the stale frame on PSNR at every step size (+4.3 to +6.2 dB).
   Without the HUD mask, prediction moves the hotbar and hand with the world; the mask is worth
-  1.4-4.3 dB.
+  1.0-4.2 dB.
 * PSNR still understates the gain. Minetest draws unfiltered pixel art at one sample per pixel, so any
   rotation re-rasterizes every texel edge differently, while the same view rendered twice is identical
   (53.5 dB). No warp of an earlier frame can reproduce that. Alignment is the property a player perceives.
@@ -791,4 +793,69 @@ hedges out of them: forward 0.5 m 19.9 vs. 19.9 dB, jump 0.5 m 20.0 vs.
 None of these were timed on a T4 here (no GPU in this sandbox). The notebook's section 3b measures GPU
 busy percentages, the governor's converged budget, pipelined vs. sequential throughput and NVENC speed on
 Kaggle's T4s.
+
+## 13. Roblox, playable online, on a 2x T4 Windows machine
+
+### 13.1 The route
+
+Kaggle can't host it (section 11.5). A Windows machine with the same two T4s can, and Google Cloud attaches
+two T4s to one VM. On it, the **official Roblox client** renders on T4 #0, NVENC on T4 #1 encodes, and the game
+host streams the whole desktop. You sign in and join games online as on any PC. `windows/setup.ps1` prepares
+such a machine in one command; `windows/README.md` is the step-by-step guide.
+
+What this pass added, on top of the pass-2 game host:
+
+* **Windows backend** (`host_win.py`). DXGI Desktop Duplication through dxcam (GDI fallback); SendInput with
+  relative counts, absolute positions, all mouse buttons, both wheels, and keys as hardware scan codes;
+  pointer state from `GetCursorInfo` and the cursor clip rectangle.
+* **Pointer modes.** Games hide or pin the pointer while it turns the camera, and show it in menus. The host
+  reports which, every frame, on Windows and Linux (XFixes). *Look* mode sends relative counts and predicts
+  them. *Pointer* mode draws the pointer locally at display rate and sends absolute positions, so menus feel
+  local too. The calibrator learns only from look-mode frames, since counts in menus move a pointer, not the
+  camera. Without the pointer captured, plain clicks work as well.
+* **Audio** (`host_audio.py`). The default output's loopback (WASAPI; PulseAudio monitor on Linux), Opus
+  20 ms packets in low-delay mode, WebCodecs decode, a jitter buffer that plays 1 % faster while more than
+  140 ms is queued.
+* **Frame rate.** 60 fps by default and about 0.1 bit per pixel (1080p60: 12 Mbit/s). The calibrator moved to
+  its own thread, and its sampling grid scales with the frame, so 1080p costs what 640x360 does.
+* **Access.** A server reachable from other machines requires a token (URL once, then an HttpOnly cookie).
+  `--tls` serves HTTPS with a self-signed certificate. That is also needed for speed, because browsers offer
+  WebCodecs only on HTTPS or localhost; without it they fall back to JPEG.
+
+### 13.2 Measured here (Linux stand-in, no GPU)
+
+**Full remote control of an unmodified game** (Minetest standing in for Roblox; `bench/host_full.py`, all checks pass):
+
+| step | result |
+|---|---|
+| access without / with a wrong / with the token | 403 / 403 / 200 |
+| HTTPS (self-signed): secure context, video codec | yes, H264 via WebCodecs |
+| in the game | pointer hidden -> look mode |
+| Esc (pause menu) | pointer shown at [320, 180] -> pointer mode, prediction off |
+| move the local pointer to "Continue" | game's pointer at [398, 139] |
+| click | menu closes -> look mode |
+| local pointer, display <-> game round trip | 0.000 px |
+| audio (440 Hz tone on the host) | 277 packets decoded in the browser, level 0.212 RMS (sent: 0.212), 136 ms buffered, 0 resyncs |
+
+**Throughput of the host pipeline** (pointer state, calibrator hand-off, change detection, H.264 encode; x264 on
+4 CPU cores standing in for NVENC; synthetic panning source):
+
+| frame | max fps | encode (x264) | capture + pointer state | calibrator (own thread) |
+|---|---|---|---|---|
+| 1280x720 | **113** | 7.6 ms | 0.7 ms | 4.0 ms, kept up with 95 % of frames |
+| 1920x1080 | **95** | 9.2 ms | 0.8 ms | 4.6 ms, kept up with 100 % of frames |
+
+Encoding is the whole bottleneck here; on the T4 machine NVENC takes it, and the notebook's NVENC cell measures
+how fast. These CPU numbers are rough: the cores are shared, and an earlier run of the same benchmark reached
+59 fps at 1080p. The Windows backend's input records and pointer logic pass unit tests against a simulated `user32`
+(`tests/test_host_win.py`: structure layout, scan codes, absolute coordinates on a multi-monitor desktop,
+buttons, wheels, pointer state).
+
+### 13.3 Not verified
+
+No Windows machine, GPU or Roblox account was available. Untested: the Windows backend against real Windows
+APIs, DXGI capture, WASAPI loopback, NVENC on Windows, the setup script (reviewed by hand, never run or parsed),
+and Roblox itself. Roblox's anti-cheat may treat injected input or virtual machines differently from a desk PC.
+If it ignores injected input, a virtual HID driver would be needed, which isn't built. Roblox's terms of use
+apply as on any PC.
 
