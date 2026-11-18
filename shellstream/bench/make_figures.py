@@ -22,7 +22,8 @@ def load(n):
 def main():
     R = {}
     for key, fn in (("quality", "quality.json"), ("latency", "latency.json"), ("bandwidth", "bandwidth.json"),
-                    ("cost_model", "cost_model.json"), ("disocclusion", "disocclusion.json")):
+                    ("cost_model", "cost_model.json"), ("disocclusion", "disocclusion.json"),
+                    ("host", "host.json")):
         v = load(fn)
         if v is not None:
             R[key] = v
@@ -31,7 +32,7 @@ def main():
     if os.path.exists(g) and "quality" in R:
         z = np.load(g)
         rows = [("pillars", "strafe 0.5m"), ("plaza", "strafe 0.5m + yaw 10deg"), ("street", "yaw 30deg")]
-        cols = ["truth", "stale", "rot", "naive", "shell"]
+        cols = ["truth", "stale", "naive", "shell1", "shell"]
         names = {"truth": "ground truth", **NP.MODE_NAMES}
         fig, ax = plt.subplots(len(rows), len(cols), figsize=(3.3 * len(cols), 2.25 * len(rows)))
         for i, (sc, off) in enumerate(rows):

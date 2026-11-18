@@ -556,7 +556,10 @@ HD V3 viewRay(const View& v, float x, float y) {
 
 // rotated-grid sub-pixel positions for 1 / 2 / 4 samples per pixel
 HD void subpixel(int spp, int s, float& ox, float& oy) {
-    if (spp >= 4) {          // RGSS: (3/8,1/8) (7/8,3/8) (1/8,5/8) (5/8,7/8) -- arithmetic, no local-memory table
+    if (spp > 4) {           // progressive refinement: R2 low-discrepancy sequence
+        ox = fractf(0.5f + (float)s * 0.75487766624f);
+        oy = fractf(0.5f + (float)s * 0.56984029099f);
+    } else if (spp == 4) {   // RGSS: (3/8,1/8) (7/8,3/8) (1/8,5/8) (5/8,7/8) -- arithmetic, no local-memory table
         int k = s & 3;
         oy = 0.125f + 0.25f * (float)k;
         ox = k == 0 ? 0.375f : (k == 1 ? 0.875f : (k == 2 ? 0.125f : 0.625f));

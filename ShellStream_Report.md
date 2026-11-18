@@ -27,6 +27,13 @@ logic and the final image. At every display refresh it re-projects the newest sh
 pose sampled at that instant, using a mesh that tears exactly at the server-marked occlusion edges and
 only once motion has actually opened a gap.
 
+**Pass 2** extends this in two directions. **Any game:** a game host streams *unmodified* games (tested
+with the open-source game Minetest). It injects your input, encodes with NVENC, and learns online how the
+image moves per mouse count and which pixels are HUD. The browser then predicts mouse-look locally for a
+game it knows nothing about (section 11, which also covers Roblox). **Both T4s fully:** each T4 now renders
+a complete shell from its own viewpoint, the browser composites them, and GPU stages overlap host stages,
+with a load governor, idle refinement and NVENC (section 12).
+
 Looking, moving, jumping and picking things up therefore have the *latency* of a local PC: about one
 display frame. Network RTT, jitter and even multi-second stalls only affect how *fresh* the lighting
 and distant content are. Human perception tolerates that far better than lag between hand and eye. *Image
@@ -39,15 +46,17 @@ short of one (section 4.4).
 |---|---|---|
 | look latency, input to finished frame, RTT 0 to 200 ms | **53-57 ms, flat** (= one frame of the software-rendered test client; one display refresh on a real GPU) | 240 -> 414 ms, grows with RTT |
 | view lag while turning through a 1 s network stall | **0.0 deg** | up to 67 deg |
-| image after a 30-degree turn (PSNR vs. 16-spp truth) | **29.7 dB** (local 1-spp render: 29.7) | 12.5 dB (stale frame) |
-| image after a 0.5 m strafe | **19.7 dB** (naive depth warp 19.1) | 13.8 dB |
-| inside regions newly revealed by a 0.5 m strafe | **16.0 dB** (naive depth warp 12.8, no band 9.8) | 10.7 dB |
+| image after a 30-degree turn (PSNR vs. 16-spp truth) | **29.0 dB** (local 1-spp render: 29.7) | 12.5 dB (stale frame) |
+| image after a 0.5 m strafe | **25.7 dB** with both T4s (19.7 with one shell; naive depth warp 19.1) | 13.8 dB |
+| inside regions newly revealed by a 0.5 m strafe | **22.5 dB** both T4s (16.0 one shell; naive 12.8, no band 9.8) | 10.7 dB |
+| **any unmodified game** (Minetest via the game host): mouse-look latency, RTT 0 to 200 ms | **12-15 ms** with input-predicted reprojection (lower than the row above only because this client draws a single textured quad, which software rendering finishes sooner) | 117-329 ms |
 | T4 time per update (modelled; measured by the notebook) | 11.2 ms on 2 T4s (22.3 on one) | 37.9 ms per 1080p frame on one T4 |
-| bytes per update, 1080p client | 295 KiB (JPEG; about 4x less colour with NVENC-class video) | 193 KiB |
+| bytes per update, 1080p client | 367 KiB (JPEG; about 4x less colour with NVENC-class video) | 193 KiB |
 
 Under translation the gap to a local render is still large. Wet-floor mirror reflections explain much
-of it for small moves (a reflection ablation is in the report); the rest is open and is the main item of
-future work.
+of it for small moves (a reflection ablation is in the report); the rest is open. For closed games, only
+mouse-look is predicted; movement and actions still take the round trip. T4 timings are modelled here and
+measured by the notebook.
 
 ---
 
@@ -299,37 +308,37 @@ what a local machine running the same renderer would display, the ceiling for an
 
 **PSNR (dB), mean of 3 scenes** (best streaming method in bold):
 
-| displacement | local PC, 1 spp | local PC, 2 spp | classic (stale frame) | rotation-only warp | naive depth warp | ShellStream w/o band | **ShellStream** |
-|---|---|---|---|---|---|---|---|
-| none | 29.00 | 33.29 | **31.75** | **31.75** | **31.75** | **31.75** | **31.75** |
-| yaw 15deg | 29.29 | 33.52 | 12.64 | **30.06** | **30.06** | **30.06** | **30.06** |
-| yaw 30deg | 29.70 | 34.01 | 12.47 | **29.69** | **29.69** | **29.69** | **29.69** |
-| yaw 60deg | 31.77 | 35.89 | 11.66 | **27.98** | **27.98** | **27.98** | **27.98** |
-| pitch 10deg | 29.21 | 33.55 | 12.92 | **31.63** | **31.63** | **31.63** | **31.63** |
-| strafe 0.1m | 29.01 | 33.18 | 19.65 | 19.65 | 22.42 | 21.98 | **22.63** |
-| strafe 0.25m | 28.89 | 33.19 | 15.98 | 15.98 | 20.27 | 19.50 | **20.75** |
-| strafe 0.5m | 28.58 | 32.93 | 13.78 | 13.78 | 19.07 | 18.00 | **19.67** |
-| strafe 1.0m | 28.48 | 32.77 | 11.86 | 11.86 | 17.36 | 16.12 | **17.71** |
-| forward 0.5m | 29.17 | 33.01 | 15.57 | 15.57 | 19.47 | 18.85 | **19.92** |
-| jump 0.5m | 29.12 | 33.23 | 14.62 | 14.62 | **20.12** | 19.57 | 20.04 |
-| strafe 0.5m + yaw 10deg | 29.05 | 33.04 | 13.26 | 14.02 | 18.56 | 17.56 | **18.88** |
+| displacement | local PC, 1 spp | local PC, 2 spp | classic (stale frame) | rotation-only warp | naive depth warp | ShellStream w/o band | ShellStream, 1 shell | **ShellStream, both T4s** |
+|---|---|---|---|---|---|---|---|---|
+| none | 29.00 | 33.29 | **31.61** | **31.61** | 30.99 | 30.99 | 30.99 | 30.99 |
+| yaw 15deg | 29.29 | 33.52 | 12.64 | **29.94** | 29.28 | 29.27 | 29.27 | 29.27 |
+| yaw 30deg | 29.70 | 34.01 | 12.46 | **29.61** | 28.99 | 28.99 | 28.99 | 28.99 |
+| yaw 60deg | 31.77 | 35.89 | 11.65 | **27.96** | 26.69 | 26.68 | 26.68 | 26.68 |
+| pitch 10deg | 29.21 | 33.55 | 12.92 | **31.49** | 30.88 | 30.87 | 30.87 | 30.87 |
+| strafe 0.1m | 29.01 | 33.18 | 19.72 | 19.72 | 22.52 | 22.04 | **22.71** | **22.71** |
+| strafe 0.25m | 28.89 | 33.19 | 16.00 | 16.00 | 20.34 | 19.52 | 20.78 | **21.26** |
+| strafe 0.5m | 28.58 | 32.93 | 13.79 | 13.79 | 19.08 | 18.03 | 19.70 | **25.68** |
+| strafe 1.0m | 28.48 | 32.77 | 11.87 | 11.87 | 17.25 | 16.13 | 17.72 | **18.76** |
+| forward 0.5m | 29.17 | 33.01 | 15.56 | 15.56 | 19.49 | 18.86 | **19.92** | **19.92** |
+| jump 0.5m | 29.12 | 33.23 | 14.62 | 14.62 | **20.12** | 19.55 | 20.02 | 20.02 |
+| strafe 0.5m + yaw 10deg | 29.05 | 33.04 | 13.26 | 14.03 | 18.56 | 17.58 | 18.90 | **24.33** |
 
 <details><summary>SSIM</summary>
 
-| displacement | local PC, 1 spp | local PC, 2 spp | classic (stale frame) | rotation-only warp | naive depth warp | ShellStream w/o band | **ShellStream** |
-|---|---|---|---|---|---|---|---|
-| none | 0.954 | 0.975 | **0.946** | **0.946** | **0.946** | **0.946** | **0.946** |
-| yaw 15deg | 0.955 | 0.977 | 0.483 | **0.934** | **0.934** | **0.934** | **0.934** |
-| yaw 30deg | 0.958 | 0.978 | 0.471 | **0.930** | **0.930** | **0.930** | **0.930** |
-| yaw 60deg | 0.969 | 0.983 | 0.449 | **0.915** | **0.915** | **0.915** | **0.915** |
-| pitch 10deg | 0.956 | 0.977 | 0.488 | **0.947** | **0.947** | **0.947** | **0.947** |
-| strafe 0.1m | 0.953 | 0.974 | 0.797 | 0.797 | 0.835 | 0.829 | **0.838** |
-| strafe 0.25m | 0.952 | 0.975 | 0.671 | 0.671 | 0.784 | 0.770 | **0.792** |
-| strafe 0.5m | 0.948 | 0.972 | 0.575 | 0.575 | 0.739 | 0.716 | **0.750** |
-| strafe 1.0m | 0.948 | 0.972 | 0.483 | 0.483 | 0.687 | 0.660 | **0.697** |
-| forward 0.5m | 0.952 | 0.974 | 0.676 | 0.676 | 0.771 | 0.760 | **0.780** |
-| jump 0.5m | 0.954 | 0.976 | 0.624 | 0.624 | **0.780** | 0.759 | 0.769 |
-| strafe 0.5m + yaw 10deg | 0.953 | 0.974 | 0.505 | 0.590 | 0.739 | 0.716 | **0.747** |
+| displacement | local PC, 1 spp | local PC, 2 spp | classic (stale frame) | rotation-only warp | naive depth warp | ShellStream w/o band | ShellStream, 1 shell | **ShellStream, both T4s** |
+|---|---|---|---|---|---|---|---|---|
+| none | 0.954 | 0.975 | **0.945** | **0.945** | 0.941 | 0.941 | 0.941 | 0.941 |
+| yaw 15deg | 0.955 | 0.977 | 0.483 | **0.933** | 0.927 | 0.927 | 0.927 | 0.927 |
+| yaw 30deg | 0.958 | 0.978 | 0.471 | **0.930** | 0.925 | 0.925 | 0.925 | 0.925 |
+| yaw 60deg | 0.969 | 0.983 | 0.449 | **0.915** | 0.908 | 0.908 | 0.908 | 0.908 |
+| pitch 10deg | 0.956 | 0.977 | 0.488 | **0.946** | 0.942 | 0.942 | 0.942 | 0.942 |
+| strafe 0.1m | 0.953 | 0.974 | 0.799 | 0.799 | 0.837 | 0.831 | **0.840** | **0.840** |
+| strafe 0.25m | 0.952 | 0.975 | 0.672 | 0.672 | 0.787 | 0.771 | 0.793 | **0.818** |
+| strafe 0.5m | 0.948 | 0.972 | 0.576 | 0.576 | 0.741 | 0.717 | 0.751 | **0.886** |
+| strafe 1.0m | 0.948 | 0.972 | 0.483 | 0.483 | 0.688 | 0.661 | 0.697 | **0.741** |
+| forward 0.5m | 0.952 | 0.974 | 0.676 | 0.676 | 0.771 | 0.759 | **0.780** | **0.780** |
+| jump 0.5m | 0.954 | 0.976 | 0.624 | 0.624 | **0.779** | 0.758 | 0.769 | 0.769 |
+| strafe 0.5m + yaw 10deg | 0.953 | 0.974 | 0.505 | 0.591 | 0.741 | 0.716 | 0.748 | **0.877** |
 
 </details>
 
@@ -338,30 +347,31 @@ what a local machine running the same renderer would display, the ceiling for an
 Reading the table:
 
 * **Rotation is solved.** Within the guard band (up to 30 degrees here), ShellStream stays within
-  2.1 dB of its zero-motion value and matches a local 1-spp render (30 degrees: 29.7 dB vs. 29.7 dB for a local 1-spp render). At 60
+  2.0 dB of its zero-motion value and matches a local 1-spp render (30 degrees: 29.0 dB vs. 29.7 dB for a local 1-spp render). At 60
   degrees part of the view comes from the coarser omni cube until the next shell arrives
-  (28.0 dB): softer, but never a hole. The classic stale frame collapses to 12-13 dB because it shows
+  (26.7 dB): softer, but never a hole. The classic stale frame collapses to 12-13 dB because it shows
   the wrong view until the next frame arrives.
 * **Translation is where the layers earn their keep.** For a 0.5 m strafe (about 90 ms of sprinting),
-  ShellStream reaches 19.7 dB vs. 13.8 dB for the classic stale frame and 19.1 dB for a naive
-  depth warp. Removing the background band costs 1.7 dB.
+  a single shell reaches 19.7 dB and both T4s together 25.7 dB, vs. 13.8 dB for the classic stale
+  frame and 19.1 dB for a naive depth warp. Removing the background band from a single shell costs
+  1.7 dB. Section 12 covers the two-T4 columns, including a fairness note.
 * **At rest it is exact.** With source-affine texture mapping, every method reproduces the server frame
-  bit-for-bit at zero motion. The remaining 1.5 dB to a local 2-spp render is JPEG plus bicubic
+  bit-for-bit at zero motion. The remaining 2.3 dB to a local 2-spp render is JPEG plus bicubic
   resampling.
 
 **Where the layers matter: inside disocclusions.** Whole-frame PSNR is dominated by errors every method
 shares. `bench/disocc.py` finds the pixels whose surface was *hidden* from the shell's viewpoint
 (ground-truth geometry, shadow-map test against a wide depth map at P0) and scores only those:
 
-| scene, displacement | pixels newly revealed | classic (stale frame) | rotation-only warp | naive depth warp | ShellStream w/o band | **ShellStream** |
-|---|---|---|---|---|---|---|
-| plaza, strafe 0.5m | 20.1 % | 11.00 | 11.00 | 13.02 | 10.53 | **15.54** |
-| plaza, strafe 0.5m + yaw 10deg | 17.4 % | 11.60 | 11.00 | 13.09 | 10.55 | **15.30** |
-| pillars, strafe 0.5m | 3.6 % | 11.68 | 11.68 | 12.83 | 9.92 | **13.90** |
-| pillars, strafe 0.5m + yaw 10deg | 3.3 % | 11.16 | 11.51 | 12.45 | 9.61 | **13.65** |
-| street, strafe 0.5m | 1.4 % | 8.58 | 8.58 | 12.57 | 9.04 | **18.86** |
-| street, strafe 0.5m + yaw 10deg | 1.1 % | 10.01 | 8.72 | 12.58 | 9.00 | **18.56** |
-| **mean** | | 10.67 | 10.41 | 12.76 | 9.78 | **15.97** |
+| scene, displacement | pixels newly revealed | classic (stale frame) | rotation-only warp | naive depth warp | ShellStream w/o band | ShellStream, 1 shell | **ShellStream, both T4s** |
+|---|---|---|---|---|---|---|---|
+| plaza, strafe 0.5m | 20.1 % | 11.00 | 11.00 | 12.74 | 10.53 | 15.53 | **21.29** |
+| plaza, strafe 0.5m + yaw 10deg | 17.4 % | 11.60 | 11.01 | 12.80 | 10.56 | 15.31 | **20.86** |
+| pillars, strafe 0.5m | 3.6 % | 11.69 | 11.69 | 12.92 | 9.92 | 13.85 | **24.27** |
+| pillars, strafe 0.5m + yaw 10deg | 3.3 % | 11.15 | 11.52 | 12.58 | 9.62 | 13.64 | **22.99** |
+| street, strafe 0.5m | 1.4 % | 8.58 | 8.58 | 13.02 | 9.14 | 18.92 | **22.82** |
+| street, strafe 0.5m + yaw 10deg | 1.1 % | 10.00 | 8.72 | 12.94 | 9.08 | 18.47 | **22.68** |
+| **mean** | | 10.67 | 10.42 | 12.83 | 9.81 | 15.95 | **22.48** |
 
 Inside newly revealed regions, the background band is decisive. It shows the actual hidden surface
 instead of a smear (naive warp), a stale frame, or a background-coloured fill (no band).
@@ -370,16 +380,16 @@ instead of a smear (naive warp), a stale frame, or a background-coloured fill (n
 much of every frame is mirror reflection, which depth re-projection moves with the *surface* instead of
 with the *mirror image*. Turning reflections off in both the server and the reference isolates the effect:
 
-| displacement | ShellStream, scene with reflections | gap to local 2 spp | ShellStream, reflections off | gap to local 2 spp |
+| displacement | one shell, scene with reflections | gap to local 2 spp | one shell, reflections off | gap to local 2 spp |
 |---|---|---|---|---|
-| none | 31.02 dB | 1.57 dB | 33.71 dB | 1.88 dB |
-| yaw 30deg | 29.67 dB | 4.05 dB | 33.64 dB | 4.23 dB |
-| strafe 0.1m | 21.22 dB | 11.27 dB | 28.62 dB | 6.72 dB |
-| strafe 0.5m | 18.29 dB | 13.62 dB | 22.48 dB | 12.30 dB |
-| forward 0.5m | 18.53 dB | 13.76 dB | 24.59 dB | 10.67 dB |
+| none | 29.88 dB | 2.71 dB | 33.62 dB | 1.96 dB |
+| yaw 30deg | 28.59 dB | 5.13 dB | 33.56 dB | 4.31 dB |
+| strafe 0.1m | 21.31 dB | 11.17 dB | 29.05 dB | 6.28 dB |
+| strafe 0.5m | 18.30 dB | 13.61 dB | 22.52 dB | 12.27 dB |
+| forward 0.5m | 18.56 dB | 13.73 dB | 24.82 dB | 10.45 dB |
 
-Mirror reflections explain most of the gap for *small* displacements (4.6 dB of 11.3 dB at a
-0.1 m strafe) and a smaller share for larger ones (1.3 dB at 0.5 m, 3.1 dB for 0.5 m
+Mirror reflections explain most of the gap for *small* displacements (4.9 dB of 11.2 dB at a
+0.1 m strafe) and a smaller share for larger ones (1.3 dB at 0.5 m, 3.3 dB for 0.5 m
 forward). They are the target of the designed virtual-depth reflection layer (section 10). The residual
 that remains with reflections off is **not explained by these experiments**. Likely contributors, all
 untested: the other view-dependent terms the ablation keeps (volumetric neon glow, specular
@@ -396,12 +406,15 @@ Per-layer bytes for a 1920x1080 / 90-degree client (focus budget 1.0 MP, 2 spp, 
 |---|---|---|---|---|---|---|---|---|
 | plaza, standing | 1344x752 | 110 | 38 | 90 | 69 | 4 | **310** | 211 |
 | plaza, running+turning | 1488x672 | 120 | 34 | 88 | 72 | 4 | **317** | 211 |
+| plaza, running+turning, both T4s | 1488x672 | 227 | 72 | 176 | 72 | 5 | **552** | 211 |
 | pillars, standing | 1344x752 | 144 | 39 | 84 | 93 | 6 | **366** | 237 |
 | pillars, running+turning | 1488x672 | 151 | 40 | 91 | 94 | 6 | **383** | 237 |
+| pillars, running+turning, both T4s | 1488x672 | 300 | 81 | 185 | 94 | 7 | **668** | 237 |
 | street, standing | 1344x752 | 72 | 19 | 34 | 69 | 4 | **198** | 132 |
 | street, running+turning | 1488x672 | 69 | 19 | 33 | 68 | 4 | **194** | 132 |
+| street, running+turning, both T4s | 1488x672 | 140 | 38 | 66 | 68 | 5 | **318** | 132 |
 
-All sizes in KiB. Mean shell: **295 KiB**, which is 72 Mbit/s at 30 shells/s with intra-only JPEG.
+All sizes in KiB. Mean shell: **367 KiB**, which is 90 Mbit/s at 30 shells/s with intra-only JPEG.
 
 Depth codec bake-off on real focus-geometry buffers:
 
@@ -424,12 +437,12 @@ Inter-frame coding headroom (x264 standing in for the T4's NVENC):
 | classic frames | 60,995 | 14,745 | 4.14x |
 | ShellStream focus layer | 61,494 | 15,226 | 4.04x |
 
-* A shell costs about 1.5x a classic JPEG frame of the same view, because it carries the
+* A shell costs about 1.9x a classic JPEG frame of the same view, because it carries the
   guard band, the background band, depth, topology and a 360-degree fallback. In return it stays usable for
   a whole RTT, so it can be sent **less often**. The client renders at display rate whatever the shell rate,
   and a player standing still costs **zero** bytes (event-driven updates).
 * With inter-frame coding of the colour layers, the measured 4x factor brings a 30 shells/s stream from
-  about 72 Mbit/s to about 35 Mbit/s.
+  about 90 Mbit/s to about 44 Mbit/s.
 
 ### 4.6 Server cost on the T4s (modelled) and the CUDA build
 
@@ -476,6 +489,24 @@ The design above is the fourth iteration. Every change below was triggered by a 
 | 12 | With every other cause removed, ShellStream still lost 1.5 dB to the *stale frame at zero motion*; the focus layer alone differed from the identical stale draw | The GPU interpolates texture coordinates perspective-correctly *in the target view*; shell texels are a grid in the *source* view, so rubber-sheet triangles spanning a 2 m / 50 m depth ratio sampled almost only their near corner | Interpolate `(uv x z_src, z_src)` and divide per fragment: the exact source-affine mapping | Zero-motion output identical to the stale frame (mean abs. difference 0.00-0.02 / 255); texture mapping exact under motion too |
 | 13 | A 0.5 m jump in the plaza scene lost 4.3 dB after row 11; the other scenes were unchanged | Giving the *band* stencil priority over the fallback was wrong: next to a grazing wall the band holds "what's behind", while the omni cube correctly holds the wall itself, which is nearer | Only the focus layer outranks the fallback by stencil. Inside its holes, band and fallback compete by depth | Regression gone (14.6 -> 18.7 dB at debug scale); zero-motion exactness kept |
 
+**Pass 2 iterations** (game host and two-T4 shells):
+
+| # | Observation | Diagnosis | Change | Effect |
+|---|---|---|---|---|
+| 14 | Injected input had no effect on the game | No window manager on a virtual display, so the game never received keyboard focus | Focus the game window explicitly | Mouse and keys drive the game |
+| 15 | WebCodecs decoder failed to configure | `prefer-hardware` is unsupported where no hardware decoder exists | No preference, plus support negotiation with a JPEG fallback | H.264 decodes everywhere it is supported |
+| 16 | Test driver froze when sharing a process with the game host | Capture and encode loop starves the GIL | Run the server in its own process for experiments | Stable measurements |
+| 17 | Vertical prediction went the wrong way | Sign error in the pitch of the predicted rotation (in the shader and its numpy twin) | Corrected, verified on synthetic rotations | Vertical steps now predicted to within 0.4-0.8 px |
+| 18 | At 200 ms RTT the image jumped 28 px when the real frame landed | A fixed window of 2 un-acked frames throttled the stream to 2 frames per RTT, and game lag was counted in captured frames | In-flight window sized to the RTT; game lag kept in milliseconds | Jump down to 4 px at 200 ms RTT |
+| 19 | Prediction scored no better than the stale frame (PSNR) | Measurement flaw (duplicate captures), then a real one: the HUD was warped with the world | Step-response test; learned screen-fixed overlay mask | +0.4-1.8 dB from HUD-awareness |
+| 20 | "It's aliasing" (my hypothesis for the remaining error) | **Refuted**: the game reproduces a view at 53.5 dB. The real causes were rasterization differences under rotation plus a ±15 % calibration bias | Misalignment (px) as the primary metric; calibration fitted over multi-frame windows | Calibration within 1-2 % of a direct measurement |
+| 21 | Two-T4 compositing gave no gain in the frozen test | Shells were aged out by wall-clock time, so the hedge on the side the camera moved to was dropped | Age counted in updates, not seconds | Hedges survive slow renders and network stalls |
+| 22 | The omni fallback moved with the hedge shell | It was rendered at the hedge centre | Rendered by T4 #1 but centred on the prediction | Fallback parallax unchanged from pass 1 |
+| 23 | Compositing every shell lost 0.1-0.5 dB on rotations and jumps while gaining up to 6 dB sideways | Hedges 0.45 m away overrode pixels the primary shell or its omni get right (view-dependent reflections) | A secondary shell is used only when its centre is within 0.15 m of the primary's distance, after >0.15 m of movement | No pose loses PSNR any more (rotations, forward, jump identical to one shell); sideways gains kept (+6.0 dB at 0.5 m). The +0.3 dB forward gain is given up |
+| 24 | With the HUD mask, browser look latency with prediction was no better than without (107 vs. 115 ms) | The mask counted every block that stayed unchanged while the view turned as overlay, including plain sky and flat terrain (24.5 % of the screen). The browser left those pixels unwarped, and the latency probe row lay in them | Only blocks that discriminate vote: a changed block is world; an unchanged block is overlay only if moving it with the world would have visibly changed it; plain blocks don't vote | Mask now covers just the version line, chat, crosshair, hearts, hotbar and hand; the view moves on the first display frame after input |
+| 25 | The next browser run showed no prediction at all | The calibration fit was 0.37, so the client switched prediction off, as designed. Cause: the test world kept its in-game clock between runs and had reached night (21:56); dark frames don't correlate, and each new poor fit overwrote the good one | Test world starts at 10:00 with the clock stopped. The calibrator keeps a good fit until a new window fits well or better, since pixels per count don't drift | Prediction survives dark stretches, menus and blank walls once calibrated |
+| 26 | Calibrated px/count differed by 12 % between two runs of the same game (-0.82 vs. -0.93), and the fit sat 5 % above a direct measurement | At a 90° vertical (121° horizontal) field of view a turn moves the view's edges up to 3x as far as its centre, so one shift fitted over a wide crop depends on where the texture is. Summing per-frame shifts over a window also accumulated their sub-pixel bias | Resample the crop to azimuth/elevation before phase correlation (one map per axis), so kx, ky are the rotation per count in centre pixels (same wire format). Measure each window's shift in one correlation | Synthetic views with a known rotation (`host_calib.py`): error +5.1/+12.6 % (horizontal/vertical) -> +3.0/-1.7 %. On the game: online fit within 0.5 % of the direct measurement; residual misalignment 0.03-0.27 px for steps up to 36 px |
+
 ## 6. Kaggle: what this uses, and what is permitted
 
 * **Hardware target:** Kaggle's "GPU T4 x2" accelerator: two NVIDIA T4s (Turing, sm_75, 16 GB, 70 W, one
@@ -494,6 +525,10 @@ The design above is the fourth iteration. Every change below was triggered by a 
     account holder's own short sessions at most, never shared;
   * keeps the code **portable**: the same `server.py` runs unchanged on any CUDA machine with T4s, which is
     where a real deployment belongs.
+* **The game host (section 11) is not run on Kaggle.** Hosting a game is the clearest case of "activity
+  unrelated to ML data science", and Kaggle kernels lack the display server and GPU graphics drivers a game
+  needs anyway. The notebook only benchmarks the pieces that are plain GPU compute (NVENC encode, shell
+  rendering) and documents how to run the host on a T4 machine.
 * Please read [kaggle.com/terms](https://www.kaggle.com/terms) yourself before enabling section 5 of the notebook.
 
 ## 7. Limitations (stated plainly)
@@ -515,9 +550,16 @@ The design above is the fourth iteration. Every change below was triggered by a 
    band/fallback coverage. Not yet diagnosed.
 5. **Classic-mode latency in the experiment includes a slow CPU server.** The comparison of shapes is
    valid; the T4-adjusted classic latency is an estimate.
-6. **Single-player.** Client-authoritative play is the right split for single-player. Multiplayer needs
+6. **Game-host mode predicts mouse-look only.** Closed games give no depth and no game state. Movement,
+   actions and in-game reactions keep the full round trip, and games with mouse acceleration or orbit
+   cameras fall back to unpredicted streaming (detected by the fit quality). The Windows backend needed for
+   the official Roblox client is not built.
+7. **Two shells cost twice the bytes**, and on CPU they cost twice the render time. On the T4s each GPU
+   renders one shell, so the second shell costs no latency, but bandwidth doubles unless the colour layers
+   move to NVENC video (designed, not built for shells; built for the game host).
+8. **Single-player.** Client-authoritative play is the right split for single-player. Multiplayer needs
    standard netcode (server authority, client prediction, reconciliation) layered on top.
-7. **The renderer is a stand-in.** A sphere-traced SDF city with soft shadows, AO, reflections and 24
+9. **The renderer is a stand-in.** A sphere-traced SDF city with soft shadows, AO, reflections and 24
    lights is heavy enough to make the point. A production renderer (a rasterizer or path tracer of mesh
    scenes) would expose the same interface: views in, colour + depth + normals out.
 
@@ -529,6 +571,10 @@ networked games; speculative execution for cloud gaming that renders likely futu
 mispredictions by image-based rendering (Outatime, Lee et al. 2015); collaborative rendering with a weak
 local renderer (Kahawai, Cuervo et al. 2015); shading-atlas streaming of object-space shading (Mueller et
 al. 2018); split VR rendering with panoramic backgrounds (Furion, Lai et al. 2017).
+
+Frame-streaming hosts (Parsec, Sunshine/Moonlight, GeForce NOW) capture, encode with NVENC and inject
+input, as the game host does. Reprojecting streamed frames by local head motion is standard in VR remote
+rendering. Speculative cloud gaming (Outatime) and "negative latency" claims predict input on the server.
 
 To my knowledge, the following specific elements, and their combination into one browser-delivered
 system for Kaggle-class GPUs, are new:
@@ -547,6 +593,11 @@ system for Kaggle-class GPUs, are new:
    holding the world's geometry.
 7. **One kernel source, two targets**: the CPU build is fallback, test oracle and cost-model
    instrumentation at once.
+8. **Input-predicted reprojection for closed games, learned online**: pixels per mouse count, game lag (in
+   time, fitted over multi-frame windows) and a screen-fixed overlay mask, all inferred from the frames
+   and the injected input, with no knowledge of the game.
+9. **Multi-viewpoint shells across GPUs**: each T4 renders a complete shell from a different hedge
+   centre, and the client composites them with per-shell stencil priority.
 
 ## 9. How to run
 
@@ -560,6 +611,10 @@ system for Kaggle-class GPUs, are new:
 
 ## 10. Next steps
 
+0. Game host: a Windows capture/input backend (DXGI duplication, virtual HID) for Windows-only games such as
+   Roblox; monocular depth estimation on the second T4's tensor cores to add translation parallax for
+   closed games; NVENC video for the shells' colour layers.
+
 1. NVENC H.264/HEVC for the colour layers. The focus layer compresses about 4x better with inter-frame
    coding, as well as classic frames do. Keep the focus pixel size fixed and let its field of view breathe.
 2. A virtual-depth reflection layer (section 7, item 3).
@@ -567,4 +622,173 @@ system for Kaggle-class GPUs, are new:
 4. A WebGPU client with a compute-shader warp for low-end GPUs.
 5. A learned pose predictor trained online on the player's own input traces, so the shell centre and band
    track intent (strafe reversals, jump timing) instead of constant velocity.
+
+
+## 11. Any game: the game host
+
+### 11.1 Why the shell alone can't run Roblox
+
+Sections 2 to 4 need a cooperating renderer: one that renders the views ShellStream asks for and hands
+back depth and normals. A closed game such as Roblox, a Steam title or anything else shipped as a binary
+only gives pixels. So pass 2 adds a second, game-agnostic path that streams an **unmodified game** and
+still takes mouse-look off the network round trip.
+
+```
+ T4 #0: the game, unmodified          host (shellstream/host.py)                  browser (client/host.js)
+ (virtual X display; VirtualGL/EGL ──▶ capture window ──▶ NVENC H.264 on T4 #1 ──WS──▶ WebCodecs decode
+  puts its OpenGL/Vulkan on the T4)    ▲ calibrator: px per count, game lag,          │ every refresh: re-project the newest
+                                       │ screen-fixed overlay mask                     │ frame by the mouse counts it does
+                                       └─ XTest: inject keys/mouse the moment ◀──WS───┘ not show yet (HUD stays put)
+                                          they arrive
+```
+
+### 11.2 Input-predicted reprojection
+
+The browser knows exactly which mouse counts it has sent that the newest frame doesn't show yet: every
+frame carries the cumulative counts it reflects, lag-compensated. The host learns the rest **while you
+play**, with no knowledge of the game:
+
+* **Rotation per count and game lag.** The upper middle of each capture is resampled to angle coordinates
+  (azimuth and elevation, from the game's field of view), where a turn is a uniform shift. Phase correlation
+  between consecutive captures gives the rotation, regressed against injected counts over multi-frame
+  windows for several candidate lags. Two earlier versions were biased. A per-frame fit was off by ±15 %
+  when the game renders slower than it's captured. A fit in plain pixels depended on where the texture
+  happened to be, because a turn moves the edges of a 121°-wide view up to three times as far as the
+  centre. In the final run the online fit is within 0.5 % of the rotation measured directly from
+  large steps.
+* **Screen-fixed overlay.** While the world measurably moves, pixels that don't change are HUD, crosshair,
+  chat or the first-person hand. Only blocks that can tell the two apart count. A block that changed is
+  world. A block that stayed put counts as overlay only if moving it with the world would have visibly
+  changed it. A plain block (sky, a flat wall) looks the same either way and doesn't vote. A first version
+  counted every unchanged block and marked a quarter of the screen as HUD, sky included. The host
+  accumulates a mask and sends it occasionally (about 1 KB). The browser re-projects the world and leaves
+  the overlay where it is.
+* **Overscan.** If the game's field of view can be set wider than what's shown (`--overscan 1.12`), the
+  rotated view comes from real pixels instead of a clamped edge.
+
+Before every display refresh, the client rotates the newest frame by `pending counts x calibration` with a
+homography (fragment shader). Mouse-look responds locally; movement and actions still take the round trip.
+
+### 11.3 Results on an unmodified third-party game (Minetest 5.6, software OpenGL in Xvfb)
+
+![any game](shellstream/results/fig_host.png)
+
+**Mouse-look latency in the browser** (input to the GPU-finished frame that shows the turn; 10 trials per
+point):
+
+| emulated RTT | mouse-look latency, prediction ON | mouse-look latency, prediction OFF (classic) | image jump when the real frame lands |
+|---|---|---|---|
+| 0 ms | **13 ms** | 117 ms | 1 px |
+| 50 ms | **15 ms** | 181 ms | 1 px |
+| 100 ms | **12 ms** | 225 ms | 1 px |
+| 200 ms | **12 ms** | 329 ms | 1 px |
+
+**Step response**: the game at rest is captured, a known mouse movement is injected, and the frame the game
+then renders is compared with the prediction made from the first frame:
+
+| mouse step (counts) | turn (px at the centre) | misalignment left, stale frame | misalignment left, predicted | PSNR stale / predicted / predicted + HUD-aware |
+|---|---|---|---|---|
+| 8, 0 | 7 px | 7.0 px | **0.1 px** | 18.5 / 20.2 / **24.4** dB |
+| 20, 0 | 17 px | 18.1 px | **0.1 px** | 16.1 / 18.4 / **21.2** dB |
+| 40, 0 | 35 px | 36.0 px | **0.1 px** | 13.8 / 17.6 / **20.6** dB |
+| 80, 0 | 70 px | 75.4 px | **2.9 px** | 11.6 / 14.8 / **16.2** dB |
+| -20, 0 | 17 px | 17.9 px | **0.0 px** | 15.8 / 18.6 / **22.1** dB |
+| 0, 15 | 13 px | 15.2 px | **0.3 px** | 16.0 / 18.4 / **21.9** dB |
+| 0, -15 | 13 px | 15.2 px | **0.1 px** | 15.8 / 18.5 / **22.1** dB |
+| 25, 10 | 23 px | 25.3 px | **0.2 px** | 14.7 / 18.3 / **20.7** dB |
+
+Online calibration after 20 s of ordinary mouse-look: -0.871 / -0.851 px per count at the image centre, game lag 43 ms, fit R^2 0.996; measured directly from the large horizontal steps: -0.867, so the online fit is off by +0.5 %.
+
+* Prediction removes nearly all of the motion: 7, 18, 36 and 75 px turns leave 0.1, 0.1, 0.1 and 2.9 px, where the stale frame is off by the full turn.
+* HUD-aware prediction also beats the stale frame on PSNR at every step size (+4.6 to +6.7 dB).
+  Without the HUD mask, prediction moves the hotbar and hand with the world; the mask is worth
+  1.4-4.3 dB.
+* PSNR still understates the gain. Minetest draws unfiltered pixel art at one sample per pixel, so any
+  rotation re-rasterizes every texel edge differently, while the same view rendered twice is identical
+  (53.5 dB). No warp of an earlier frame can reproduce that. Alignment is the property a player perceives.
+
+### 11.4 What game-host mode can't do
+
+* Movement, jumping, shooting and every in-game reaction still take a full round trip. Only looking around
+  is predicted; the game alone knows what pressing W does.
+* Rotation is predicted, translation is not: without depth there's no parallax. A depth estimate from the
+  colour frames (a monocular depth network on the second T4's tensor cores) is the obvious next step.
+* Games with mouse acceleration, smoothing or a third-person orbit camera break the linear model. The
+  online fit (R²) detects this, and prediction turns itself off below R² 0.5.
+* Games turn about the world's vertical axis, the client about the camera's. Looking 20° up, the synthetic
+  calibration test shows a +6 % turn error (+3 % looking level). The online fit tracks the current view
+  but can't remove the error. The game's pitch isn't observable from the pixels alone, so a fix needs
+  pitch tracking.
+* Calibration needs a textured view. A game that starts in darkness or on a blank screen gets no
+  prediction until the player has looked around somewhere visible. After that, the calibrator keeps the
+  good fit. If the player then changes the in-game sensitivity while the view is dark, the stale fit
+  stays in use until a textured view corrects it.
+* Anti-cheat systems may treat injected input or virtual displays as suspicious.
+
+### 11.5 Roblox, specifically
+
+* **Not on Kaggle.** Roblox has no Linux client. Kaggle kernels are Linux containers without a display
+  server or GPU graphics drivers. And running a game service is the kind of "activity unrelated to ML data
+  science" Kaggle's Acceptable Use Policy is quoted as prohibiting. I didn't build a Kaggle workaround.
+* **Linux T4 machine.** The host runs any Linux game, or a Windows game under Proton/Wine:
+  `python shellstream/server.py --game <command> --launcher "vglrun -d egl0" --encode-gpu 1 --fov <deg> --overscan 1.12`.
+  Roblox's only Linux route is an unofficial community client (Sober, which runs the Android build); check
+  Roblox's terms before using it.
+* **Officially: a Windows VM with a T4** running the real Roblox client. That needs a Windows backend for the
+  host: DXGI desktop duplication for capture, SendInput or a virtual HID driver for input. That backend is
+  **not built in this proof of concept**. The protocol, calibrator, HUD mask, NVENC path and browser client
+  carry over unchanged. Roblox's anti-cheat and terms apply as for any remote-play setup.
+
+## 12. Using both T4s fully
+
+### 12.1 Where the second GPU went in pass 1
+
+Pass 1 split one shell's focus rows across the T4s (about 11 ms each per update, modelled). Both GPUs then
+sat idle during host-side deflate and while waiting for input. Their NVENC engines were unused, and so
+were their tensor cores.
+
+### 12.2 Two complete shells per update
+
+Now each T4 renders a **complete** shell from its own centre. T4 #0 renders the predicted pose. T4 #1
+renders a **hedge**: the current position when the player moves (it covers stopping and reversing), and
+alternating left/right offsets (0.45 m) when standing, so the client soon holds both sides. T4 #1
+also renders the omni cube, centred on the prediction, and T4 #0 the collision brick.
+
+The browser keeps the newest shell of every slot and composites them nearest-centre first. A secondary
+shell takes part only when its viewpoint is about as good as the primary's: within 0.15 m of the primary
+centre's distance, once the camera has moved more than 0.15 m. A first version composited every shell
+unconditionally. It gained up to 6 dB on sideways moves but *lost* 0.1-0.5 dB on pure rotations and on
+jumps, because the 0.45 m-offset hedges then replaced pixels that the primary shell or its omni fallback
+render from the correct centre, with view-dependent reflections 0.45 m wrong. The gating rule fixes that.
+
+Among the shells that take part, shell *i* writes stencil value K-i and passes only where the stored value
+is ≤ K-i. It therefore fills just the pixels no nearer shell covered, while still depth-testing against
+its own triangles. Bands and the omni cube then fill whatever is left. With a single shared stencil value a
+shell couldn't depth-test its own geometry; with an age filter on wall-clock time, a stalled network would
+have dropped every shell. Both bugs were found by the test harness.
+
+Results (section 4.4 tables, "1 shell" vs. "both T4s" columns): for a 0.5 m strafe,
+**19.7 dB with one shell vs. 25.7 dB with both T4s**; inside the regions that strafe reveals,
+16.0 vs. 22.5 dB. Fairness note: the left/right hedges sit at ±0.45 m, close to
+the ±0.5 m test poses. Poses away from any hedge centre gain nothing, because the gating rule keeps the
+hedges out of them: forward 0.5 m 19.9 vs. 19.9 dB, jump 0.5 m 20.0 vs.
+20.0 dB, every rotation identical. Ungated compositing gained 0.3 dB going forward but lost up to
+0.5 dB on jumps; the rule gives up the first to remove the second. The cost is a second shell on the wire:
+1.7x the bytes of a single shell (section 4.5).
+
+### 12.3 No idle time
+
+* **Pipelined stages.** `stage1` (both GPUs render and encode) of update *n+1* runs while `finish` (deflate
+  and packing on the CPU cores) of update *n* completes, in order, on one worker.
+* **Governor.** It scales the focus pixel budget so the busier T4 is busy 85 % of each shell interval
+  (0.25-2.5 MP). With two shells at 30 updates/s, each T4 is modelled at about 22 ms per shell, which
+  leaves room to raise the budget.
+* **Idle refinement.** When nothing moves, the next idle intervals re-render the same shells at 4 and then
+  8 samples per pixel (R2 low-discrepancy sequence), instead of leaving the GPUs idle.
+* **NVENC.** Both T4s' hardware encoders are used: the game host streams H.264 through NVENC on the T4 that
+  doesn't run the game. The notebook benchmarks both encoders, alone and simultaneously.
+
+None of these were timed on a T4 here (no GPU in this sandbox). The notebook's section 3b measures GPU
+busy percentages, the governor's converged budget, pipelined vs. sequential throughput and NVENC speed on
+Kaggle's T4s.
 

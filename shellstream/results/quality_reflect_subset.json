@@ -17,36 +17,43 @@
   "scene": "plaza",
   "offset": "none",
   "mode": "stale",
-  "psnr": 31.35,
-  "ssim": 0.9415
+  "psnr": 31.16,
+  "ssim": 0.9403
  },
  {
   "scene": "plaza",
   "offset": "none",
   "mode": "rot",
-  "psnr": 31.35,
-  "ssim": 0.9415
+  "psnr": 31.16,
+  "ssim": 0.9403
  },
  {
   "scene": "plaza",
   "offset": "none",
   "mode": "naive",
-  "psnr": 31.35,
-  "ssim": 0.9415
+  "psnr": 29.14,
+  "ssim": 0.9267
  },
  {
   "scene": "plaza",
   "offset": "none",
   "mode": "noback",
-  "psnr": 31.35,
-  "ssim": 0.9415
+  "psnr": 29.14,
+  "ssim": 0.9267
+ },
+ {
+  "scene": "plaza",
+  "offset": "none",
+  "mode": "shell1",
+  "psnr": 29.14,
+  "ssim": 0.9267
  },
  {
   "scene": "plaza",
   "offset": "none",
   "mode": "shell",
-  "psnr": 31.35,
-  "ssim": 0.9415
+  "psnr": 29.14,
+  "ssim": 0.9267
  },
  {
   "scene": "plaza",
@@ -66,36 +73,43 @@
   "scene": "plaza",
   "offset": "yaw 30deg",
   "mode": "stale",
-  "psnr": 14.03,
-  "ssim": 0.4726
+  "psnr": 14.02,
+  "ssim": 0.4721
  },
  {
   "scene": "plaza",
   "offset": "yaw 30deg",
   "mode": "rot",
-  "psnr": 30.27,
-  "ssim": 0.9312
+  "psnr": 30.12,
+  "ssim": 0.9301
  },
  {
   "scene": "plaza",
   "offset": "yaw 30deg",
   "mode": "naive",
-  "psnr": 30.27,
-  "ssim": 0.9312
+  "psnr": 28.22,
+  "ssim": 0.9148
  },
  {
   "scene": "plaza",
   "offset": "yaw 30deg",
   "mode": "noback",
-  "psnr": 30.27,
-  "ssim": 0.9312
+  "psnr": 28.22,
+  "ssim": 0.9148
+ },
+ {
+  "scene": "plaza",
+  "offset": "yaw 30deg",
+  "mode": "shell1",
+  "psnr": 28.22,
+  "ssim": 0.9148
  },
  {
   "scene": "plaza",
   "offset": "yaw 30deg",
   "mode": "shell",
-  "psnr": 30.27,
-  "ssim": 0.9312
+  "psnr": 28.22,
+  "ssim": 0.9148
  },
  {
   "scene": "plaza",
@@ -115,36 +129,43 @@
   "scene": "plaza",
   "offset": "strafe 0.1m",
   "mode": "stale",
-  "psnr": 19.92,
-  "ssim": 0.7994
+  "psnr": 19.99,
+  "ssim": 0.8022
  },
  {
   "scene": "plaza",
   "offset": "strafe 0.1m",
   "mode": "rot",
-  "psnr": 19.92,
-  "ssim": 0.7994
+  "psnr": 19.99,
+  "ssim": 0.8022
  },
  {
   "scene": "plaza",
   "offset": "strafe 0.1m",
   "mode": "naive",
-  "psnr": 19.82,
-  "ssim": 0.7628
+  "psnr": 19.98,
+  "ssim": 0.7681
  },
  {
   "scene": "plaza",
   "offset": "strafe 0.1m",
   "mode": "noback",
-  "psnr": 19.07,
-  "ssim": 0.7541
+  "psnr": 19.14,
+  "ssim": 0.757
+ },
+ {
+  "scene": "plaza",
+  "offset": "strafe 0.1m",
+  "mode": "shell1",
+  "psnr": 20.63,
+  "ssim": 0.7819
  },
  {
   "scene": "plaza",
   "offset": "strafe 0.1m",
   "mode": "shell",
-  "psnr": 20.49,
-  "ssim": 0.778
+  "psnr": 20.63,
+  "ssim": 0.7819
  },
  {
   "scene": "plaza",
@@ -164,36 +185,43 @@
   "scene": "plaza",
   "offset": "strafe 0.5m",
   "mode": "stale",
-  "psnr": 14.2,
-  "ssim": 0.5104
+  "psnr": 14.21,
+  "ssim": 0.5118
  },
  {
   "scene": "plaza",
   "offset": "strafe 0.5m",
   "mode": "rot",
-  "psnr": 14.2,
-  "ssim": 0.5104
+  "psnr": 14.21,
+  "ssim": 0.5118
  },
  {
   "scene": "plaza",
   "offset": "strafe 0.5m",
   "mode": "naive",
-  "psnr": 16.99,
-  "ssim": 0.629
+  "psnr": 16.96,
+  "ssim": 0.637
  },
  {
   "scene": "plaza",
   "offset": "strafe 0.5m",
   "mode": "noback",
-  "psnr": 15.18,
-  "ssim": 0.5922
+  "psnr": 15.19,
+  "ssim": 0.5937
+ },
+ {
+  "scene": "plaza",
+  "offset": "strafe 0.5m",
+  "mode": "shell1",
+  "psnr": 18.07,
+  "ssim": 0.6633
  },
  {
   "scene": "plaza",
   "offset": "strafe 0.5m",
   "mode": "shell",
-  "psnr": 18.04,
-  "ssim": 0.6616
+  "psnr": 23.72,
+  "ssim": 0.8542
  },
  {
   "scene": "plaza",
@@ -213,36 +241,43 @@
   "scene": "plaza",
   "offset": "forward 0.5m",
   "mode": "stale",
-  "psnr": 16.02,
-  "ssim": 0.6343
+  "psnr": 16.01,
+  "ssim": 0.6341
  },
  {
   "scene": "plaza",
   "offset": "forward 0.5m",
   "mode": "rot",
-  "psnr": 16.02,
-  "ssim": 0.6343
+  "psnr": 16.01,
+  "ssim": 0.6341
  },
  {
   "scene": "plaza",
   "offset": "forward 0.5m",
   "mode": "naive",
-  "psnr": 16.87,
-  "ssim": 0.6615
+  "psnr": 16.92,
+  "ssim": 0.6616
  },
  {
   "scene": "plaza",
   "offset": "forward 0.5m",
   "mode": "noback",
   "psnr": 16.04,
-  "ssim": 0.6473
+  "ssim": 0.646
+ },
+ {
+  "scene": "plaza",
+  "offset": "forward 0.5m",
+  "mode": "shell1",
+  "psnr": 17.85,
+  "ssim": 0.6912
  },
  {
   "scene": "plaza",
   "offset": "forward 0.5m",
   "mode": "shell",
-  "psnr": 17.78,
-  "ssim": 0.6903
+  "psnr": 17.85,
+  "ssim": 0.6912
  },
  {
   "scene": "pillars",
@@ -262,36 +297,43 @@
   "scene": "pillars",
   "offset": "none",
   "mode": "stale",
-  "psnr": 30.68,
-  "ssim": 0.9319
+  "psnr": 30.64,
+  "ssim": 0.9315
  },
  {
   "scene": "pillars",
   "offset": "none",
   "mode": "rot",
-  "psnr": 30.68,
-  "ssim": 0.9319
+  "psnr": 30.64,
+  "ssim": 0.9315
  },
  {
   "scene": "pillars",
   "offset": "none",
   "mode": "naive",
-  "psnr": 30.68,
-  "ssim": 0.9319
+  "psnr": 30.61,
+  "ssim": 0.9313
  },
  {
   "scene": "pillars",
   "offset": "none",
   "mode": "noback",
-  "psnr": 30.68,
-  "ssim": 0.9319
+  "psnr": 30.61,
+  "ssim": 0.9313
+ },
+ {
+  "scene": "pillars",
+  "offset": "none",
+  "mode": "shell1",
+  "psnr": 30.61,
+  "ssim": 0.9313
  },
  {
   "scene": "pillars",
   "offset": "none",
   "mode": "shell",
-  "psnr": 30.68,
-  "ssim": 0.9319
+  "psnr": 30.61,
+  "ssim": 0.9313
  },
  {
   "scene": "pillars",
@@ -312,35 +354,42 @@
   "offset": "yaw 30deg",
   "mode": "stale",
   "psnr": 12.93,
-  "ssim": 0.4211
+  "ssim": 0.4207
  },
  {
   "scene": "pillars",
   "offset": "yaw 30deg",
   "mode": "rot",
-  "psnr": 29.08,
-  "ssim": 0.9075
+  "psnr": 29.0,
+  "ssim": 0.9079
  },
  {
   "scene": "pillars",
   "offset": "yaw 30deg",
   "mode": "naive",
-  "psnr": 29.08,
-  "ssim": 0.9075
+  "psnr": 28.97,
+  "ssim": 0.9076
  },
  {
   "scene": "pillars",
   "offset": "yaw 30deg",
   "mode": "noback",
-  "psnr": 29.08,
-  "ssim": 0.9075
+  "psnr": 28.96,
+  "ssim": 0.9074
+ },
+ {
+  "scene": "pillars",
+  "offset": "yaw 30deg",
+  "mode": "shell1",
+  "psnr": 28.96,
+  "ssim": 0.9074
  },
  {
   "scene": "pillars",
   "offset": "yaw 30deg",
   "mode": "shell",
-  "psnr": 29.08,
-  "ssim": 0.9075
+  "psnr": 28.96,
+  "ssim": 0.9074
  },
  {
   "scene": "pillars",
@@ -360,36 +409,43 @@
   "scene": "pillars",
   "offset": "strafe 0.1m",
   "mode": "stale",
-  "psnr": 20.62,
-  "ssim": 0.7675
+  "psnr": 20.67,
+  "ssim": 0.7683
  },
  {
   "scene": "pillars",
   "offset": "strafe 0.1m",
   "mode": "rot",
-  "psnr": 20.62,
-  "ssim": 0.7675
+  "psnr": 20.67,
+  "ssim": 0.7683
  },
  {
   "scene": "pillars",
   "offset": "strafe 0.1m",
   "mode": "naive",
-  "psnr": 22.12,
-  "ssim": 0.8401
+  "psnr": 22.17,
+  "ssim": 0.8405
  },
  {
   "scene": "pillars",
   "offset": "strafe 0.1m",
   "mode": "noback",
-  "psnr": 21.96,
-  "ssim": 0.8343
+  "psnr": 22.0,
+  "ssim": 0.8354
+ },
+ {
+  "scene": "pillars",
+  "offset": "strafe 0.1m",
+  "mode": "shell1",
+  "psnr": 22.0,
+  "ssim": 0.8349
  },
  {
   "scene": "pillars",
   "offset": "strafe 0.1m",
   "mode": "shell",
-  "psnr": 21.95,
-  "ssim": 0.8341
+  "psnr": 22.0,
+  "ssim": 0.8349
  },
  {
   "scene": "pillars",
@@ -410,35 +466,42 @@
   "offset": "strafe 0.5m",
   "mode": "stale",
   "psnr": 14.98,
-  "ssim": 0.5374
+  "ssim": 0.5373
  },
  {
   "scene": "pillars",
   "offset": "strafe 0.5m",
   "mode": "rot",
   "psnr": 14.98,
-  "ssim": 0.5374
+  "ssim": 0.5373
  },
  {
   "scene": "pillars",
   "offset": "strafe 0.5m",
   "mode": "naive",
-  "psnr": 18.67,
-  "ssim": 0.7349
+  "psnr": 18.68,
+  "ssim": 0.7342
  },
  {
   "scene": "pillars",
   "offset": "strafe 0.5m",
   "mode": "noback",
   "psnr": 17.81,
-  "ssim": 0.7102
+  "ssim": 0.7103
+ },
+ {
+  "scene": "pillars",
+  "offset": "strafe 0.5m",
+  "mode": "shell1",
+  "psnr": 18.53,
+  "ssim": 0.728
  },
  {
   "scene": "pillars",
   "offset": "strafe 0.5m",
   "mode": "shell",
-  "psnr": 18.53,
-  "ssim": 0.728
+  "psnr": 24.72,
+  "ssim": 0.8739
  },
  {
   "scene": "pillars",
@@ -458,35 +521,42 @@
   "scene": "pillars",
   "offset": "forward 0.5m",
   "mode": "stale",
-  "psnr": 16.57,
-  "ssim": 0.63
+  "psnr": 16.56,
+  "ssim": 0.6299
  },
  {
   "scene": "pillars",
   "offset": "forward 0.5m",
   "mode": "rot",
-  "psnr": 16.57,
-  "ssim": 0.63
+  "psnr": 16.56,
+  "ssim": 0.6299
  },
  {
   "scene": "pillars",
   "offset": "forward 0.5m",
   "mode": "naive",
-  "psnr": 19.66,
-  "ssim": 0.7874
+  "psnr": 19.65,
+  "ssim": 0.7873
  },
  {
   "scene": "pillars",
   "offset": "forward 0.5m",
   "mode": "noback",
   "psnr": 19.09,
-  "ssim": 0.7719
+  "ssim": 0.7717
+ },
+ {
+  "scene": "pillars",
+  "offset": "forward 0.5m",
+  "mode": "shell1",
+  "psnr": 19.27,
+  "ssim": 0.7766
  },
  {
   "scene": "pillars",
   "offset": "forward 0.5m",
   "mode": "shell",
-  "psnr": 19.28,
-  "ssim": 0.7768
+  "psnr": 19.27,
+  "ssim": 0.7766
  }
 ]

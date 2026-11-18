@@ -50,6 +50,9 @@ def dev_results_literal():
     d = load("disocclusion.json")
     if d:
         keep["disocclusion"] = d
+    hj = load("host.json")
+    if hj:
+        keep["host"] = hj
     for k in ("video", "codec_explore"):
         v = load(f"{k}.json")
         if v:
@@ -214,6 +217,8 @@ except Exception as e:
     C.append(writefile("$ROOT_PLACEHOLDER/server.py", "server.py"))
     C.append(writefile("$ROOT_PLACEHOLDER/client/index.html", "client/index.html"))
     C.append(writefile("$ROOT_PLACEHOLDER/client/client.js", "client/client.js"))
+    C.append(writefile("$ROOT_PLACEHOLDER/client/host.js", "client/host.js"))
+    C.append(writefile("$ROOT_PLACEHOLDER/host.py", "host.py"))
     C.append(md("## 2. Bring up the renderers"))
     C.append(code("""
 sys.path.insert(0, ROOT)
@@ -363,17 +368,24 @@ PIPE = {}
 if RUN_BENCHMARKS:
     n = 200 if FULL else 6
     path = scripted_path(n)
-    configs = [('1 GPU', BACKENDS[:1])] + ([('2 GPUs (split-frame)', BACKENDS[:2])] if len(BACKENDS) > 1 else [])
-    for name, bes in configs:
-        b = E.ShellBuilder(bes, jpeg=JPEG, focus_budget=1.0e6 if FULL else 0.1e6, omni_R=256 if FULL else 96)
+    configs = [('1 GPU', BACKENDS[:1], {})]
+    if len(BACKENDS) > 1:
+        configs += [('2 GPUs, one shell split', BACKENDS[:2], dict(strategy='split')),
+                    ('2 GPUs, two shells', BACKENDS[:2], dict(strategy='dual')),
+                    ('2 GPUs, two shells + governor', BACKENDS[:2], dict(strategy='dual', governor=True, duty=0.85,
+                                                                         **({} if FULL else dict(min_budget=0.03e6))))]
+    for name, bes, extra in configs:
+        b = E.ShellBuilder(bes, jpeg=JPEG, focus_budget=1.0e6 if FULL else 0.1e6, omni_R=256 if FULL else 96, **extra)
         b.build(path[0], 0); b.build(path[1], 1)
         rows = []
         for i, st in enumerate(path):
             t = time.perf_counter(); msg, stats, _ = b.build(st, i); rows.append(dict(stats, wall_ms=(time.perf_counter()-t)*1000))
         PIPE[name] = rows
         w = np.array([r['wall_ms'] for r in rows]); by = np.array([r['bytes'] for r in rows])
-        print(f'{name:22s} shell build: p50 {np.median(w):6.1f} ms  p95 {np.percentile(w,95):6.1f} ms  p99 {np.percentile(w,99):6.1f} ms'
-              f'  -> {1000/np.median(w):5.1f} shells/s   size p50 {np.median(by)/1024:6.0f} KiB  ({np.median(by)*8*30/1e6:5.1f} Mbit/s at 30 shells/s)')
+        busy = np.median([r['gpu_ms'] for r in rows[-50:]], axis=0) / (1000 / 30) * 100     # % of a 30 shells/s interval
+        print(f'{name:30s} build p50 {np.median(w):6.1f} ms p99 {np.percentile(w,99):6.1f} ms -> {1000/np.median(w):5.1f}/s | '
+              f'GPU busy at 30/s: {", ".join(f"{x:.0f}%" for x in busy)} | budget {rows[-1].get("budget", int(b.cfg["focus_budget"]))/1e6:.2f} MP | '
+              f'{np.median(by)/1024:5.0f} KiB')
     # classic baseline: one 1080p frame of the exact client view + JPEG
     cl = []
     be = BACKENDS[0]
@@ -393,7 +405,7 @@ if RUN_BENCHMARKS:
 if RUN_BENCHMARKS and PIPE:
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(1, 2, figsize=(15, 4.2))
-    colors = ['#2a78d6', '#eb6834']
+    colors = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100']
     for (name, rows), c in zip(PIPE.items(), colors):
         ax[0].plot([r['wall_ms'] for r in rows], lw=1.5, color=c, label=name)
         ax[1].plot([r['bytes'] / 1024 for r in rows], lw=1.5, color=c, label=name)
@@ -402,11 +414,79 @@ if RUN_BENCHMARKS and PIPE:
     for a in ax:
         a.grid(alpha=.25); a.spines[['top', 'right']].set_visible(False)
     plt.tight_layout(); plt.show()
-    if '2 GPUs (split-frame)' in PIPE:
-        rows = PIPE['2 GPUs (split-frame)']
-        print('per-GPU busy time, last 50 frames (ms):', np.round(np.median([r['gpu_ms'] for r in rows[-50:]], axis=0), 2),
-              '| converged split fraction:', rows[-1]['split'])
+    if '2 GPUs, one shell split' in PIPE:
+        print('split strategy: converged row split between the GPUs:', PIPE['2 GPUs, one shell split'][-1].get('split'))
     json.dump(dict(passes=PASS_RESULTS, pipeline={k: v for k, v in PIPE.items()}), open(os.path.join(ROOT, 'results', 'kaggle_t4_benchmark.json'), 'w'))
+"""))
+    C.append(md("""
+### 3b. Using both T4s fully
+
+* **Two shells instead of one split shell.** Each T4 renders a complete shell from its own centre: T4 #0 at
+  the predicted pose, T4 #1 at a *hedge* (where the player most likely is instead: the current position
+  when moving, alternating left/right offsets when standing). The browser composites every shell it holds,
+  nearest centre first. The extra GPU becomes image quality under motion, the weakest point of a single
+  shell (report, section 12).
+* **GPU and host stages overlap.** `stage1` (both GPUs render and encode) of shell *n+1* runs while `finish`
+  (deflate + packing on the CPU cores) of shell *n* completes.
+* **Governor.** It scales the focus pixel budget so the busier GPU is busy 85 % of each shell interval.
+  Idle frames go to progressive refinement (more samples per pixel when nothing moves).
+* **NVENC.** Each T4 has its own hardware H.264 encoder; the game host streams through them.
+"""))
+    C.append(code("""
+if RUN_BENCHMARKS and len(BACKENDS) > 1:
+    from concurrent.futures import ThreadPoolExecutor
+    b = E.ShellBuilder(BACKENDS[:2], jpeg=JPEG, focus_budget=1.0e6 if FULL else 0.1e6, omni_R=256 if FULL else 96, strategy='dual')
+    path2 = scripted_path(120 if FULL else 6)
+    b.build(path2[0], 0)
+    t = time.perf_counter()
+    for i, st in enumerate(path2): b.build(st, i)
+    seq_rate = len(path2) / (time.perf_counter() - t)
+    pool = ThreadPoolExecutor(1); prev = None
+    t = time.perf_counter()
+    for i, st in enumerate(path2):
+        ctx = b.stage1(st, i)                    # GPUs: shell i
+        if prev is not None: prev.result()       # host: shell i-1 finished meanwhile
+        prev = pool.submit(b.finish, ctx)
+    prev.result()
+    pipe_rate = len(path2) / (time.perf_counter() - t)
+    print(f'two-shell updates per second: sequential {seq_rate:.1f}/s, GPU and host stages overlapped {pipe_rate:.1f}/s')
+"""))
+    C.append(code("""
+NVENC = {}
+if RUN_BENCHMARKS and NGPU:
+    if ensure('av', 'av'):
+        import av, threading, io
+        from PIL import Image
+        def nvenc_bench(gpu, w, h, n=180):
+            cc = av.CodecContext.create('h264_nvenc', 'w'); cc.width, cc.height, cc.pix_fmt = w, h, 'yuv420p'
+            cc.framerate = 60; cc.bit_rate = 10_000_000; cc.gop_size = 600
+            cc.options = {'preset': 'p1', 'tune': 'ull', 'zerolatency': '1', 'delay': '0', 'bf': '0', 'rc': 'cbr', 'gpu': str(gpu)}
+            cc.open()
+            # game-like content: a rendered shell view panning, not noise
+            try:
+                base = np.asarray(Image.open(io.BytesIO(part(sheets['front']['tiles'][0]['data']))).convert('RGB').resize((w + 64, h)))
+            except Exception:       # showcase disabled: smooth synthetic content instead
+                yy, xx = np.mgrid[0:h, 0:w + 64]
+                base = (127 + 120 * np.stack([np.sin(xx / 37.0), np.cos(yy / 23.0), np.sin((xx + yy) / 51.0)], -1)).astype(np.uint8)
+            frames = [av.VideoFrame.from_ndarray(np.ascontiguousarray(base[:, k:k + w]), format='rgb24').reformat(format='yuv420p') for k in range(0, 64, 4)]
+            t = time.perf_counter(); size = 0
+            for i in range(n):
+                f = frames[i % len(frames)]; f.pts = i
+                size += sum(p.size for p in cc.encode(f))
+            return round((time.perf_counter() - t) / n * 1000, 2), round(size / n / 1024, 1)
+        for g in range(NGPU):
+            for (w, h) in ((1920, 1080), (1280, 720)):
+                try:
+                    NVENC[f'T4 #{g} {w}x{h}'] = nvenc_bench(g, w, h)
+                except Exception as e:
+                    NVENC[f'T4 #{g} {w}x{h}'] = f'unavailable: {e!r}'[:160]
+        if NGPU >= 2 and all(isinstance(v, tuple) for v in NVENC.values()):
+            out = {}
+            ths = [threading.Thread(target=lambda g=g: out.__setitem__(g, nvenc_bench(g, 1920, 1080))) for g in range(2)]
+            t = time.perf_counter(); [x.start() for x in ths]; [x.join() for x in ths]
+            NVENC['both T4 NVENCs at once, 1080p'] = (round((time.perf_counter() - t) / 180 * 1000, 2), 'ms per frame pair')
+        for k, v in NVENC.items():
+            print(f'{k:34s}', f'{v[0]} ms/frame, {v[1]} KiB/frame' if isinstance(v, tuple) and isinstance(v[1], float) else v)
 """))
     C.append(md("""
 ## 4. Client-side results from the development run
@@ -429,6 +509,7 @@ if REPRODUCE_BROWSER_EXPERIMENTS:
         print('running', script, '...')
         print(sh(f'cd {ROOT}/bench && {sys.executable} {script}')[-3000:])
 """))
+    C.append(md(open(os.path.join(HERE, "results", "NOTEBOOK_ANYGAME.md")).read() if os.path.exists(os.path.join(HERE, "results", "NOTEBOOK_ANYGAME.md")) else "## Any game"))
     C.append(md("""
 ## 5. Play it (opt-in, personal use only, read section 0)
 

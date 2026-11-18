@@ -1,0 +1,42 @@
+[
+ {
+  "pitch_deg": 0.0,
+  "model": "pixels",
+  "kx": 0.6606,
+  "ky": -0.7077,
+  "r2": 0.999,
+  "true": 0.6283,
+  "err_x_pct": 5.1,
+  "err_y_pct": 12.6
+ },
+ {
+  "pitch_deg": 0.0,
+  "model": "angles",
+  "kx": 0.6473,
+  "ky": -0.6176,
+  "r2": 0.999,
+  "true": 0.6283,
+  "err_x_pct": 3.0,
+  "err_y_pct": -1.7
+ },
+ {
+  "pitch_deg": 20.0,
+  "model": "pixels",
+  "kx": 0.7061,
+  "ky": -0.7367,
+  "r2": 0.999,
+  "true": 0.6283,
+  "err_x_pct": 12.4,
+  "err_y_pct": 17.2
+ },
+ {
+  "pitch_deg": 20.0,
+  "model": "angles",
+  "kx": 0.6647,
+  "ky": -0.6153,
+  "r2": 0.979,
+  "true": 0.6283,
+  "err_x_pct": 5.8,
+  "err_y_pct": -2.1
+ }
+]

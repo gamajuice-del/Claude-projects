@@ -24,7 +24,7 @@
     6.0
    ],
    "band": 0.5,
-   "cpu_build_ms": 3281
+   "cpu_build_ms": 3154
   },
   {
    "scene": "plaza",
@@ -50,12 +50,38 @@
     6.0
    ],
    "band": 0.68,
-   "cpu_build_ms": 3249
+   "cpu_build_ms": 3136
+  },
+  {
+   "scene": "plaza",
+   "motion": "running+turning, both T4s",
+   "total": 565467,
+   "classic_jpeg_1080p": 216314,
+   "parts": {
+    "omni colour": 48863,
+    "omni depth": 18737,
+    "omni topology": 5632,
+    "front colour": 232879,
+    "front depth": 53134,
+    "front topology": 20916,
+    "back colour": 95715,
+    "back depth": 47996,
+    "back topology": 36753,
+    "collision brick": 1044,
+    "header": 3794
+   },
+   "focus": "1488x672",
+   "margins": [
+    12.5,
+    6.0
+   ],
+   "band": 0.68,
+   "cpu_build_ms": 5902
   },
   {
    "scene": "pillars",
    "motion": "standing",
-   "total": 374893,
+   "total": 374891,
    "classic_jpeg_1080p": 242925,
    "parts": {
     "omni colour": 73294,
@@ -68,7 +94,7 @@
     "front depth": 26046,
     "front topology": 14143,
     "collision brick": 3055,
-    "header": 2697
+    "header": 2695
    },
    "focus": "1344x752",
    "margins": [
@@ -76,7 +102,7 @@
     6.0
    ],
    "band": 0.5,
-   "cpu_build_ms": 4264
+   "cpu_build_ms": 4025
   },
   {
    "scene": "pillars",
@@ -102,12 +128,38 @@
     6.0
    ],
    "band": 0.68,
-   "cpu_build_ms": 4339
+   "cpu_build_ms": 4102
+  },
+  {
+   "scene": "pillars",
+   "motion": "running+turning, both T4s",
+   "total": 683719,
+   "classic_jpeg_1080p": 242925,
+   "parts": {
+    "omni colour": 73527,
+    "omni depth": 14968,
+    "omni topology": 7727,
+    "front colour": 307391,
+    "front depth": 53982,
+    "front topology": 29335,
+    "back colour": 83617,
+    "back depth": 58664,
+    "back topology": 47285,
+    "collision brick": 3054,
+    "header": 4165
+   },
+   "focus": "1488x672",
+   "margins": [
+    12.5,
+    6.0
+   ],
+   "band": 0.68,
+   "cpu_build_ms": 7534
   },
   {
    "scene": "street",
    "motion": "standing",
-   "total": 202588,
+   "total": 202587,
    "classic_jpeg_1080p": 134960,
    "parts": {
     "omni colour": 53995,
@@ -120,7 +172,7 @@
     "front depth": 12345,
     "front topology": 6933,
     "collision brick": 1695,
-    "header": 2565
+    "header": 2564
    },
    "focus": "1344x752",
    "margins": [
@@ -128,7 +180,7 @@
     6.0
    ],
    "band": 0.5,
-   "cpu_build_ms": 2377
+   "cpu_build_ms": 2076
   },
   {
    "scene": "street",
@@ -154,7 +206,33 @@
     6.0
    ],
    "band": 0.68,
-   "cpu_build_ms": 2056
+   "cpu_build_ms": 2022
+  },
+  {
+   "scene": "street",
+   "motion": "running+turning, both T4s",
+   "total": 325840,
+   "classic_jpeg_1080p": 134960,
+   "parts": {
+    "omni colour": 51951,
+    "omni depth": 12123,
+    "omni topology": 6011,
+    "front colour": 143574,
+    "front depth": 26149,
+    "front topology": 12442,
+    "back colour": 30124,
+    "back depth": 18974,
+    "back topology": 18989,
+    "collision brick": 1458,
+    "header": 4041
+   },
+   "focus": "1488x672",
+   "margins": [
+    12.5,
+    6.0
+   ],
+   "band": 0.68,
+   "cpu_build_ms": 3830
   }
  ],
  "depth_codecs": [
@@ -163,7 +241,7 @@
    "deflate(raw)": 72001,
    "deflate(1st-order delta)": 31380,
    "PNG 16-bit": 31080,
-   "ours level1 ms": 9.19,
+   "ours level1 ms": 9.03,
    "ours: 2nd-order affine pred + zigzag + planes, deflate-1": 40974,
    "ours (deflate-6)": 28382,
    "scene": "plaza",
@@ -175,7 +253,7 @@
    "deflate(raw)": 32939,
    "deflate(1st-order delta)": 28709,
    "PNG 16-bit": 26919,
-   "ours level1 ms": 9.64,
+   "ours level1 ms": 9.14,
    "ours: 2nd-order affine pred + zigzag + planes, deflate-1": 36400,
    "ours (deflate-6)": 26046,
    "scene": "pillars",
@@ -187,7 +265,7 @@
    "deflate(raw)": 15532,
    "deflate(1st-order delta)": 14922,
    "PNG 16-bit": 12464,
-   "ours level1 ms": 5.35,
+   "ours level1 ms": 5.71,
    "ours: 2nd-order affine pred + zigzag + planes, deflate-1": 18630,
    "ours (deflate-6)": 12345,
    "scene": "street",

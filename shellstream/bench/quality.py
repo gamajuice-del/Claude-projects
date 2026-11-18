@@ -13,7 +13,8 @@ modes:
   rot     - rotation-only re-projection (VR 'timewarp' style), all content at infinity
   naive   - depth mesh warp without topology (rubber sheets across occlusion edges)
   noback  - ours without the background (2nd-surface) layer
-  shell   - ours: topology-aware warp of focus + background band + omni fallback
+  shell1  - ours, one shell: topology-aware warp of focus + background band + omni fallback (pass 1)
+  shell   - ours with both T4s: every shell the client holds (predicted centre + left/right hedges), composited
 """
 import json
 import math
@@ -27,7 +28,7 @@ from playwright.sync_api import sync_playwright
 from common import E, S, RESULTS, decode_capture, ground_truth, launch, psnr, ssim, wait_for
 
 W, H, FOV = int(sys.argv[1]) if len(sys.argv) > 1 else 640, int(sys.argv[2]) if len(sys.argv) > 2 else 400, 90.0
-MODES = ["stale", "rot", "naive", "noback", "shell"]
+MODES = ["stale", "rot", "naive", "noback", "shell1", "shell"]   # shell1: one shell (pass 1); shell: all shells (dual-T4)
 SCENES = {
     "plaza": ((4.0, 1.7, 26.0), 0.15, 0.0),
     "pillars": ((1.5, 1.7, 11.5), -0.55, -0.05),
@@ -53,8 +54,9 @@ if os.environ.get("SS_OFFSETS"):
 
 def main():
     be = E.CpuBackend()
-    b = E.ShellBuilder([be], focus_budget=0.6e6, omni_R=256, quality=PRESET, spp=2)
-    srv = S.ShellServer(b, port=8831, max_rate=5, animate=False).start()
+    # two backends = the two T4s: GPU0 renders the predicted-centre shell, GPU1 a hedge shell (+ omni)
+    b = E.ShellBuilder([be, E.CpuBackend()], focus_budget=0.6e6, omni_R=256, quality=PRESET, spp=2, strategy="dual")
+    srv = S.ShellServer(b, port=8831, max_rate=5, animate=False, max_refine=0).start()
     rows = []
     gallery = {}
     with sync_playwright() as p:
@@ -70,6 +72,10 @@ def main():
             pg.evaluate("SS.pause(true); SS.freezeShell(false)")
             seq0 = pg.evaluate(f"SS.setPose({list(pos)}, {yaw}, {pitch}), SS.sendNow()")
             wait_for(pg, f"SS.shell && SS.shell.in_seq >= {seq0}", 300)
+            # a second update while standing gives the other hedge side (left + right), as during play
+            seq1 = pg.evaluate("SS.game.pos[0] += 0.002, SS.sendNow()")
+            wait_for(pg, f"SS.shell && SS.shell.in_seq >= {seq1}", 300)
+            pg.evaluate(f"SS.game.pos = {list(pos)}")
             pg.evaluate("SS.freezeShell(true)")
             sh = pg.evaluate("SS.shell.stats")
             print(sname, "shell", sh, flush=True)

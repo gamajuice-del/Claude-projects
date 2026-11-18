@@ -44,8 +44,9 @@ def main():
     rows = []
     codec_rows = []
     for sname, (pos, yaw, pitch) in SCENES.items():
-        for motion, st_extra in (("standing", {}), ("running+turning", dict(vel=(3.0, 0, -4.0), yawRate=1.2))):
-            b = E.ShellBuilder([be], focus_budget=1.0e6, omni_R=256, quality="high")
+        for motion, st_extra, nbe in (("standing", {}, 1), ("running+turning", dict(vel=(3.0, 0, -4.0), yawRate=1.2), 1),
+                                      ("running+turning, both T4s", dict(vel=(3.0, 0, -4.0), yawRate=1.2), 2)):
+            b = E.ShellBuilder([be] * nbe, focus_budget=1.0e6, omni_R=256, quality="high")
             b.pipe_ms = 15.0     # pretend T4 pipeline latency for the look-ahead
             st = dict(pos=pos, yaw=yaw, pitch=pitch, fov=90, aspect=16 / 9, vw=1920, rtt=60, mode="shell", time=0.0, **st_extra)
             t = time.perf_counter()
@@ -56,9 +57,9 @@ def main():
             hdr = json.loads(msg[4:4 + hlen])
             parts = {}
             for sh in hdr["sheets"]:
-                parts[f"{sh['name']} colour"] = sum(t["data"][1] for t in sh["tiles"])
-                parts[f"{sh['name']} depth"] = sh["depth"]["data"][1]
-                parts[f"{sh['name']} topology"] = sh["conn"]["data"][1]
+                for k, v in ((f"{sh['name']} colour", sum(t["data"][1] for t in sh["tiles"])),
+                             (f"{sh['name']} depth", sh["depth"]["data"][1]), (f"{sh['name']} topology", sh["conn"]["data"][1])):
+                    parts[k] = parts.get(k, 0) + v
             parts["collision brick"] = hdr["brick"]["data"][1]
             parts["header"] = hlen
             # classic reference: one 1080p frame of exactly the client's view

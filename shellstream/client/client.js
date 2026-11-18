@@ -283,21 +283,25 @@ const worker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'te
 const absNow = () => performance.timeOrigin + performance.now();
 
 // ------------------------------------------------------------------ shell textures (double buffered)
-const texPool = {};   // name -> [set0, set1]
-let texFlip = 0;
+const texPool = {};   // "slot:sheet" -> { sets: [set0, set1], flip }
 function mkTex() { return gl.createTexture(); }
-function texSet(name) {
-  if (!texPool[name]) texPool[name] = [0, 1].map(() => ({ color: mkTex(), depth: mkTex(), conn: mkTex() }));
-  return texPool[name][texFlip];
+function texSet(key) {
+  if (!texPool[key]) texPool[key] = { sets: [0, 1].map(() => ({ color: mkTex(), depth: mkTex(), conn: mkTex() })), flip: 0 };
+  const p = texPool[key]; const ts = p.sets[p.flip]; p.flip ^= 1;     // double-buffered per slot
+  return ts;
 }
-let shell = null;          // currently displayed shell
+// Every shell the server sends belongs to a *slot* (A = predicted centre; BL/BR/BC = hedge centres rendered by the
+// second GPU). The client keeps the newest shell of every slot and composites all of them (section 2.10).
+const slots = {};
+let shell = null;          // newest message (its A group is "the" shell for the single-shell modes)
 let shellFrozen = false;   // test hook: stop accepting new shells
 const stats = { frames: 0, bytes: 0, shells: 0, lastShells: [], frameTimes: [], inputAges: [], rtt: 50, srv: {} };
 
 function uploadShell(h) {
   const t0 = absNow();
+  const gm = h.groups || [{ slot: 'A', center: h.center }];
   for (const sh of h.sheets) {
-    const ts = texSet(sh.name);
+    const ts = texSet(gm[sh.group || 0].slot + ':' + sh.name);
     gl.bindTexture(gl.TEXTURE_2D, ts.color);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, sh.W, sh.H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     for (const t of sh.tiles) { gl.texSubImage2D(gl.TEXTURE_2D, 0, t.x, t.y, gl.RGBA, gl.UNSIGNED_BYTE, t.bitmap); t.bitmap.close(); delete t.bitmap; }
@@ -314,7 +318,13 @@ function uploadShell(h) {
     for (const p of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, p, gl.NEAREST);
     sh.tex = ts; delete sh.depthArr; delete sh.connArr;
   }
-  texFlip ^= 1;
+  // register the groups of this message by slot (omni is global: newest wins)
+  gm.forEach((g, gi) => {
+    const shs = h.sheets.filter((x) => (x.group || 0) === gi);
+    const grp = { slot: g.slot, center: g.center, t: absNow(), upd: stats.shells, sheets: Object.fromEntries(shs.map((x) => [x.name, x])) };
+    if (grp.sheets.omni) { slots.__omni = grp.sheets.omni; delete grp.sheets.omni; }
+    slots[g.slot] = grp;
+  });
   if (h.brick) game.brick = h.brick;
   h.tReady = absNow(); h.uploadMs = h.tReady - t0;
   shell = h;
@@ -343,6 +353,7 @@ function connect() {
       else if (m.type === 'error') console.warn('server:', m.msg);
       return;
     }
+    if (typeof HOST !== 'undefined' && HOST.active) { HOST.onBinary(e.data, absNow()); return; }
     if (shellFrozen) return;
     worker.postMessage({ buf: e.data, tRecv: absNow() }, [e.data]);
   };
@@ -354,6 +365,7 @@ const game = {
   pos: [0, 1.7, 24], vel: [0, 0, 0], yaw: 0, pitch: 0, onGround: false, brick: null,
   yawRate: 0, pitchRate: 0, score: 0, orbs: [], spawns: [], frozen: TEST, t0: performance.now(),
   onWorld(m) {
+    if (m.mode === 'host') { HOST.start(m); return; }      // game-host mode (client/host.js)
     this.spawns = m.spawns || [];
     if (!this.started && m.start) { this.pos = m.start.slice(0, 3); this.yaw = m.start[3] || 0; this.started = true; }
     if (CFG.orbs && this.orbs.length === 0) for (let i = 0; i < 18; i++) this.orbs.push(this.newOrb(i));
@@ -515,8 +527,8 @@ function render(pos, yaw, pitch, mode) {
   gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
   const aspect = canvas.width / canvas.height, fov = CFG.fov * Math.PI / 180;
   let vp = viewProj(basis(yaw, pitch), fov, aspect), cam = pos, shown = { yaw, pitch, pos };
-  if (!shell) return shown;
-  const sheets = Object.fromEntries(shell.sheets.map((s) => [s.name, s]));
+  if (!shell || !slots.A) return shown;
+  const sheets = Object.assign({}, slots.A.sheets, slots.__omni ? { omni: slots.__omni } : {});
   if (shell.mode === 'classic' || mode === 'classic' || mode === 'stale') {
     // classic cloud gaming: the image is whatever pose the server rendered -> no local reprojection
     const fv = sheets.front.views[0];
@@ -539,11 +551,26 @@ function render(pos, yaw, pitch, mode) {
     // (depth alone would let the omni cube's coarse silhouettes leak over it). Inside the focus layer's holes,
     // the background band and the omni fallback compete by *depth*: the band knows what's behind an edge, but
     // the omni may legitimately hold a nearer surface (e.g. a wall right next to the camera).
-    gl.enable(gl.STENCIL_TEST);
-    gl.stencilFunc(gl.ALWAYS, 1, 0xFF); gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
-    drawSheet(sheets.front, vp, cam, rot ? 2 : (naive ? 3 : 0), 1.0);
+    // Multi-shell composite ("shell" mode): every slot's focus layer, nearest centre first. Shell i writes stencil
+    // value K-i and passes where stored <= K-i, so it fills only pixels no nearer-centred shell covered, yet still
+    // depth-tests against its own triangles. Then bands and the omni fallback fill what is left, by depth.
+    // keep shells from the last 3 updates (counted in updates, not seconds: independent of render speed and
+    // of network stalls); older hedges are superseded as soon as the player moves on
+    const all = Object.keys(slots).filter((k) => k !== '__omni').map((k) => slots[k]);
+    const newest = Math.max(...all.map((g) => g.upd));
+    let groups = (mode === 'shell' ? all.filter((g) => newest - g.upd <= 3) : [slots.A]);
+    // A secondary viewpoint only helps when it is about as good as the primary one: otherwise (camera still
+    // next to the primary centre, or moving away from every hedge) its view-dependent errors would replace
+    // pixels the primary shell or its omni fallback get right.
+    const dist = (g) => V.len(V.sub(g.center, cam));
+    const dA = dist(slots.A);
+    groups = groups.filter((g) => g === slots.A || (dA > 0.15 && dist(g) < dA + 0.15));
+    groups.sort((a, b) => dist(a) - dist(b));
+    const K = groups.length;
+    gl.enable(gl.STENCIL_TEST); gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+    groups.forEach((g, i) => { gl.stencilFunc(gl.GEQUAL, K - i, 0xFF); drawSheet(g.sheets.front, vp, cam, rot ? 2 : (naive ? 3 : 0), 1.0); });
     gl.stencilFunc(gl.EQUAL, 0, 0xFF); gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
-    if (sheets.back && mode !== 'noback' && !rot && !naive) drawSheet(sheets.back, vp, cam, 0, 1.0);
+    if (mode !== 'noback' && !rot && !naive) groups.forEach((g) => { if (g.sheets.back) drawSheet(g.sheets.back, vp, cam, 0, 1.0); });
     if (sheets.omni) drawSheet(sheets.omni, vpOmni, cam, rot ? 2 : (naive ? 3 : 1), 1.03);
     gl.disable(gl.STENCIL_TEST);
   }
@@ -557,6 +584,7 @@ let lastT = performance.now(), seq = 0, lastSend = 0, prevYaw = 0, prevPitch = 0
 const frameLog = [];
 function loop(now) {
   requestAnimationFrame(loop);
+  if (typeof HOST !== 'undefined' && HOST.active) { HOST.tick(now); return; }
   if (game.paused) return;
   const t0 = performance.now();
   let dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
@@ -603,13 +631,14 @@ requestAnimationFrame(loop);
 // ------------------------------------------------------------------ HUD
 function pct(a, q) { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; }
 setInterval(() => {
+  if (typeof HOST !== 'undefined' && HOST.active) { hud.innerHTML = HOST.hud(); return; }
   const ft = stats.frameTimes, fps = ft.length ? 1000 / (ft.reduce((a, b) => a + b, 0) / ft.length) : 0;
   const ls = stats.lastShells, nowA = absNow();
   const recent = ls.filter((s) => nowA - s.t < 1000);
   const mbps = recent.reduce((a, s) => a + s.bytes, 0) * 8 / 1e6;
   const age = shell ? (performance.now() - shell.in_t) : 0;
   const s = stats.srv || {};
-  const label = { shell: 'SHELL (ours)', classic: 'CLASSIC streaming', rot: 'ROTATION-ONLY warp', noback: 'SHELL w/o background layer', stale: 'STALE', naive: 'NAIVE depth warp' }[MODE];
+  const label = { shell: 'SHELL (ours)', classic: 'CLASSIC streaming', rot: 'ROTATION-ONLY warp', noback: 'SHELL w/o background layer', stale: 'STALE', naive: 'NAIVE depth warp', shell1: 'SHELL, newest centre only' }[MODE];
   hud.innerHTML = `<b>${label}</b>   [1-4 switch, H hide]\n` +
     `display  ${fps.toFixed(0)} fps   frame p99 ${pct(ft, 0.99).toFixed(1)} ms\n` +
     `look latency (input->frame)  ${pct(stats.inputAges, 0.5).toFixed(1)} ms` + (MODE === 'classic' ? ' + network + server' : '') + `\n` +

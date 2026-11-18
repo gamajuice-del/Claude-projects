@@ -418,6 +418,7 @@ def encode_bytes(a: np.ndarray, level=1) -> bytes:
 
 # ====================================================================== shell construction
 import json
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -448,6 +449,12 @@ class ShellBuilder:
         brick=True,
         base_margin_deg=(7.0, 6.0),
         max_lookahead=0.40,
+        strategy="auto",        # "dual": each GPU renders a complete shell from its own centre; "split": one shell,
+                                # focus rows split across GPUs; "auto" = dual with >= 2 backends
+        hedge_m=0.45,           # dual: lateral offset of the hedge shell when standing still
+        governor=False,         # adapt the focus budget so the busiest GPU uses `duty` of the shell interval
+        duty=0.85,
+        min_budget=0.25e6, max_budget=2.5e6,
     )
 
     def __init__(self, backends, jpeg: JpegEncoder | None = None, **cfg):
@@ -458,6 +465,8 @@ class ShellBuilder:
         self.pool = ThreadPoolExecutor(max(4, len(self.be) + 2))
         self.pipe_ms = 30.0
         self.lock = threading.Lock()
+        self.side = 1
+        self.duty_log = deque(maxlen=600)
 
     # ------------------------------------------------------------------ planning
     def plan(self, st: dict) -> dict:
@@ -509,7 +518,178 @@ class ShellBuilder:
     def _sheet(self, name, role, W, H, ds, views):
         return dict(name=name, role=role, W=W, H=H, ds=ds, views=views, tiles=[], depth=None, conn=None)
 
-    def build(self, st: dict, frame_id: int = 0):
+    def build(self, st: dict, frame_id: int = 0, refine: int = 0):
+        c = self.cfg
+        strategy = c["strategy"]
+        if strategy == "auto":
+            strategy = "dual" if len(self.be) >= 2 else "split"
+        if strategy == "dual" and st.get("mode", "shell") != "classic":
+            return self._build_dual(st, frame_id, refine)
+        return self._build_split(st, frame_id, refine)
+
+    # ------------------------------------------------------------------ dual: one complete shell per GPU
+    def _hedge_centre(self, st, pl):
+        """second viewpoint: where the player is *most likely to be instead* of the prediction"""
+        pos = np.array(st.get("pos", (0, 1.7, 24)), np.float64)
+        vel = np.array(st.get("vel", (0, 0, 0)), np.float64)
+        if np.linalg.norm(vel[[0, 2]]) > 0.5:
+            return pos, "BC"                       # moving: hedge against stopping / reversing
+        r, _, _ = basis_from_yaw_pitch(pl["yaw"], 0.0)
+        self.side = -self.side                     # standing: alternate left / right so the client holds both
+        return pl["center"] + r * (self.side * self.cfg["hedge_m"]), "BL" if self.side < 0 else "BR"
+
+    def _render_group(self, be, bi, view, band, lights, t, spp, with_omni, with_brick, centre, tagp, omni_centre=None):
+        """everything one GPU needs to produce one complete shell, encoded; returns host-side parts"""
+        c, q, ds = self.cfg, self.cfg["quality"], self.cfg["ds"]
+        x0, y0, W, H = view["rect"]
+        Wg, Hg = W // ds, H // ds
+        cu = be.name == "cuda"
+        kw = (lambda tag: {"tag": tagp + tag}) if cu else (lambda tag: {})
+        out, t0 = {}, time.perf_counter()
+        Pf = pack_params([view], lights, t, q, spp=spp)
+        Pfg = pack_params(scale_views([view], ds), lights, t, q, band_delta=band)
+        rgb, _, _ = be.render(Pf, W, H, MODE_COLOR, **kw("front"))
+        _, fdc, fgeo = be.render(Pfg, Wg, Hg, MODE_GEO | MODE_GEOONLY, **kw("fg"))
+        out["front_dc"], out["front_conn"] = fdc, be.conn(Pfg, fgeo, Wg, Hg, **kw("f"))
+        if c["back"]:
+            brgb, bdc, bgeo = be.render(Pfg, Wg, Hg, MODE_COLOR | MODE_GEO | MODE_BACK, pre_geo=fgeo, pre_code=fdc, **kw("back"))
+            out["back_rgb"], out["back_dc"] = be.fill(brgb, bdc, Wg, Hg, **kw("fill")), bdc
+            out["back_conn"] = be.conn(Pfg, bgeo, Wg, Hg, **kw("b"))
+        if with_omni:
+            R = c["omni_R"]
+            ov = cube_views(centre if omni_centre is None else omni_centre, R, ds)
+            orgb, _, _ = be.render(pack_params(ov, lights, t, q, spp=c["omni_spp"]), 3 * R, 2 * R, MODE_COLOR, **kw("omni"))
+            Pog = pack_params(scale_views(ov, ds), lights, t, q)
+            _, odc, ogeo = be.render(Pog, 3 * R // ds, 2 * R // ds, MODE_GEO | MODE_GEOONLY, **kw("og"))
+            out["omni_rgb"], out["omni_dc"], out["omni_views"] = orgb, odc, ov
+            out["omni_conn"] = be.conn(Pog, ogeo, 3 * R // ds, 2 * R // ds, **kw("o"))
+        if with_brick:
+            cell, (nx, ny, nz) = 0.25, (48, 18, 48)
+            feet = centre - np.array([0, 1.7, 0])
+            o = np.floor((feet - np.array([nx, 4, nz]) * cell / np.array([2, 1, 2])) / cell) * cell
+            o[1] = math.floor((feet[1] - 1.0) / cell) * cell
+            out["brick"] = be.brick(Pf, np.array([o[0], o[1], o[2], cell, nx, ny, nz, 0], np.float32), nx * ny * nz)
+            out["brick_meta"] = dict(o=[float(v) for v in o], cell=cell, n=[nx, ny, nz])
+        out["front_rgb"] = rgb
+        be.sync()
+        t_gpu = time.perf_counter() - t0
+        enc = {}
+        for k, v in out.items():
+            if k in ("front_rgb", "back_rgb"):
+                enc[k] = self._jpeg(be, bi, v, c["jpeg_q"])
+            elif k == "omni_rgb":
+                enc[k] = self._jpeg(be, bi, v, c["omni_q"])
+            elif k in ("brick_meta", "omni_views"):
+                enc[k] = v
+            else:
+                enc[k] = be.to_host(v)
+        enc["_gpu_s"], enc["_enc_s"] = t_gpu, time.perf_counter() - t0 - t_gpu
+        enc["_size"] = (W, H, Wg, Hg)
+        return enc
+
+    def _build_dual(self, st, frame_id, refine):
+        return self.finish(self.stage1(st, frame_id, refine))
+
+    def stage1(self, st, frame_id=0, refine=0):
+        """GPU stage (both T4s in parallel): render + JPEG-encode both shells, pull geometry to the host.
+        Returns a context for `finish`, which runs on the host while the GPUs start on the next shell."""
+        c = self.cfg
+        strategy = c["strategy"] if c["strategy"] != "auto" else ("dual" if len(self.be) >= 2 else "split")
+        if strategy != "dual" or st.get("mode", "shell") == "classic":
+            return ("done", self._build_split(st, frame_id, refine))
+        t_start = time.perf_counter()
+        pl = self.plan(st)
+        lights = [((l[0], l[1], l[2]), (l[3], l[4], l[5]), l[6]) for l in pl["lights"][: NL_MAX - len(STATIC_LIGHTS)]]
+        spp = min(16, c["spp"] << refine)
+        cB, slotB = self._hedge_centre(st, pl)
+        vA = pl["front"]
+        vB = dict(vA); vB["o"] = np.asarray(cB, np.float64)
+        jobs = [("A", pl["center"], vA, 0, False, True), (slotB, cB, vB, 1, True, False)]
+        # the omni fallback is rendered by GPU1 (load balance) but centred on the *predicted* pose
+        futs = [self.pool.submit(self._render_group, self.be[bi], bi, v, pl["band"], lights, pl["t"], spp, om, br, ctr, slot,
+                                 pl["center"]) for slot, ctr, v, bi, om, br in jobs]
+        groups = [f.result() for f in futs]
+        return ("dual", dict(st=st, frame_id=frame_id, refine=refine, t_start=t_start, t_gpu_done=time.perf_counter(),
+                             pl=pl, spp=spp, jobs=jobs, groups=groups))
+
+    def finish(self, ctx):
+        """host stage: lossless coding of geometry/topology/brick (parallel threads) and message assembly"""
+        kind, d = ctx
+        if kind == "done":
+            return d
+        st, frame_id, refine, t_start, t_gpu_done = d["st"], d["frame_id"], d["refine"], d["t_start"], d["t_gpu_done"]
+        pl, spp, jobs, groups, c = d["pl"], d["spp"], d["jobs"], d["groups"], self.cfg
+        # host-side lossless coding, all groups in parallel
+        jobsz = {}
+        for gi, g in enumerate(groups):
+            for k in ("front", "back", "omni"):
+                if f"{k}_dc" in g:
+                    jobsz[(gi, f"{k}_dc")] = self.pool.submit(encode_depth, g[f"{k}_dc"])
+                    jobsz[(gi, f"{k}_conn")] = self.pool.submit(encode_bytes, g[f"{k}_conn"])
+            if "brick" in g:
+                jobsz[(gi, "brick")] = self.pool.submit(encode_bytes, g["brick"])
+        blobs = {k: f.result() for k, f in jobsz.items()}
+        payload, off = [], [0]
+
+        def put(b):
+            o = off[0]; payload.append(b); off[0] += len(b)
+            return [o, len(b)]
+
+        def vjson(v, s=1):
+            x0, y0, w, h = v["rect"]
+            return dict(rect=[x0 // s, y0 // s, w // s, h // s], o=np.asarray(v["o"]).tolist(), r=v["r"].tolist(),
+                        u=v["u"].tolist(), f=v["f"].tolist(), tan=list(v["tan"]))
+        ds, R = c["ds"], c["omni_R"]
+        sheets, gmeta, brick = [], [], None
+        for gi, ((slot, ctr, v, bi, om, br), g) in enumerate(zip(jobs, groups)):
+            W, H, Wg, Hg = g["_size"]
+            gmeta.append(dict(slot=slot, center=np.asarray(ctr).tolist(), gpu=bi, spp=spp))
+            fr = dict(name="front", group=gi, role="front", W=W, H=H, ds=ds, views=[vjson(v, ds)],
+                      tiles=[dict(data=put(g["front_rgb"]), x=0, y=0, w=W, h=H)])
+            fr["depth"] = dict(data=put(blobs[(gi, "front_dc")]), w=Wg, h=Hg); fr["conn"] = dict(data=put(blobs[(gi, "front_conn")]))
+            sheets.append(fr)
+            if "back_dc" in g:
+                bk = dict(name="back", group=gi, role="back", W=Wg, H=Hg, ds=1, views=[vjson(v, ds)],
+                          tiles=[dict(data=put(g["back_rgb"]), x=0, y=0, w=Wg, h=Hg)])
+                bk["depth"] = dict(data=put(blobs[(gi, "back_dc")]), w=Wg, h=Hg); bk["conn"] = dict(data=put(blobs[(gi, "back_conn")]))
+                sheets.append(bk)
+            if "omni_dc" in g:
+                om_ = dict(name="omni", group=gi, role="omni", W=3 * R, H=2 * R, ds=ds, views=[vjson(x, ds) for x in g["omni_views"]],
+                           tiles=[dict(data=put(g["omni_rgb"]), x=0, y=0, w=3 * R, h=2 * R)])
+                om_["depth"] = dict(data=put(blobs[(gi, "omni_dc")]), w=3 * R // ds, h=2 * R // ds)
+                om_["conn"] = dict(data=put(blobs[(gi, "omni_conn")]))
+                sheets.insert(0, om_)
+            if "brick" in g:
+                brick = dict(g["brick_meta"]); brick["data"] = put(blobs[(gi, "brick")])
+        t_end = time.perf_counter()
+        gpu_ms = [round(g["_gpu_s"] * 1000, 2) for g in groups]
+        build_ms = (t_end - t_start) * 1000
+        self.pipe_ms = 0.8 * self.pipe_ms + 0.2 * build_ms
+        self._govern(max(g["_gpu_s"] for g in groups) * 1000, st)
+        W, H = groups[0]["_size"][:2]
+        stats = dict(build_ms=round(build_ms, 2), gpu_ms=gpu_ms, host_ms=round((t_end - t_gpu_done) * 1000, 2),
+                     stage1_ms=round((t_gpu_done - t_start) * 1000, 2),
+                     enc_ms=[round(g["_enc_s"] * 1000, 2) for g in groups], strategy="dual", spp=spp, refine=refine,
+                     bytes=off[0], W=W, H=H, L_ms=round(pl["L"] * 1000, 1), budget=int(c["focus_budget"]),
+                     margins_deg=[round(math.degrees(m), 1) for m in pl["margins"]], band=round(pl["band"], 2),
+                     slots=[g["slot"] for g in gmeta])
+        hdr = dict(type="frame", id=frame_id, mode=pl["mode"], in_seq=st.get("seq", 0), in_t=st.get("t", 0),
+                   center=pl["center"].tolist(), zn=ZNEAR, groups=gmeta, sheets=sheets, brick=brick, stats=stats)
+        hb = json.dumps(hdr, separators=(",", ":")).encode()
+        return b"".join([len(hb).to_bytes(4, "little"), hb] + payload), stats, pl
+
+    def _govern(self, busiest_gpu_ms, st):
+        """use the GPUs fully: scale the focus budget so the busiest GPU is busy `duty` of each shell interval"""
+        c = self.cfg
+        interval = float(st.get("interval", 1000.0 / 30))
+        self.duty_log.append(busiest_gpu_ms / max(interval, 1e-3))
+        if not c["governor"] or busiest_gpu_ms <= 0:
+            return
+        ratio = (c["duty"] * interval / busiest_gpu_ms) ** 0.7
+        c["focus_budget"] = float(np.clip(c["focus_budget"] * np.clip(ratio, 0.8, 1.25), c["min_budget"], c["max_budget"]))
+
+    # ------------------------------------------------------------------ split: one shell across GPUs
+    def _build_split(self, st: dict, frame_id: int = 0, refine: int = 0):
         t_start = time.perf_counter()
         c = self.cfg
         pl = self.plan(st)
@@ -518,7 +698,7 @@ class ShellBuilder:
         q, t = c["quality"], pl["t"]
         shell_mode = pl["mode"] != "classic"
         front_views = [pl["front"]]
-        Pf = pack_params(front_views, lights, t, q, spp=c["spp"])
+        Pf = pack_params(front_views, lights, t, q, spp=min(16, c["spp"] << refine))
         Pfg = pack_params(scale_views(front_views, ds), lights, t, q, band_delta=pl["band"])
         Wg, Hg = W // ds, H // ds
         R = c["omni_R"]

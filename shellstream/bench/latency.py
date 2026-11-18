@@ -54,7 +54,7 @@ def measure_steps(pg, rtt, srv_ms):
 def main():
     be = E.CpuBackend(threads=2)
     b = E.ShellBuilder([be], focus_budget=0.06e6, omni_R=64, quality="low", spp=1)
-    srv = S.ShellServer(b, port=8841, max_rate=60, animate=False).start()
+    srv = S.ShellServer(b, port=8841, max_rate=60, animate=False, max_refine=0).start()
     out = dict(steps=[], stall={})
     with sync_playwright() as p:
         br = launch(p)

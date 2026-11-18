@@ -18,7 +18,7 @@ from common import E, RESULTS
 W, H, FOV = 640, 400, 90.0
 SCENES = {"plaza": ((4.0, 1.7, 26.0), 0.15, 0.0), "pillars": ((1.5, 1.7, 11.5), -0.55, -0.05), "street": ((7.0, 1.7, 45.0), 0.0, 0.02)}
 OFFSETS = {"strafe 0.5m": (0.5, 0, 0, 0), "strafe 0.5m + yaw 10deg": (0.5, 0, 0, 10)}
-MODES = ["stale", "rot", "naive", "noback", "shell"]
+MODES = ["stale", "rot", "naive", "noback", "shell1", "shell"]
 
 
 def rays(r, u, f, tx, ty, w, h):

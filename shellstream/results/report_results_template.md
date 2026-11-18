@@ -71,8 +71,9 @@ Reading the table:
   ({{YAW60}} dB): softer, but never a hole. The classic stale frame collapses to 12-13 dB because it shows
   the wrong view until the next frame arrives.
 * **Translation is where the layers earn their keep.** For a 0.5 m strafe (about 90 ms of sprinting),
-  ShellStream reaches {{S05}} dB vs. {{C05}} dB for the classic stale frame and {{N05}} dB for a naive
-  depth warp. Removing the background band costs {{BAND05}} dB.
+  a single shell reaches {{S05_1}} dB and both T4s together {{S05}} dB, vs. {{C05}} dB for the classic stale
+  frame and {{N05}} dB for a naive depth warp. Removing the background band from a single shell costs
+  {{BAND05}} dB. Section 12 covers the two-T4 columns, including a fairness note.
 * **At rest it is exact.** With source-affine texture mapping, every method reproduces the server frame
   bit-for-bit at zero motion. The remaining {{ZEROGAP}} dB to a local 2-spp render is JPEG plus bicubic
   resampling.

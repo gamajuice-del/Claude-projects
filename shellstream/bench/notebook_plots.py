@@ -6,8 +6,9 @@ import matplotlib.pyplot as _plt
 PAL = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948']
 INK, INK2 = '#0b0b0b', '#52514e'
 MODE_NAMES = {'stale': 'classic (stale frame)', 'rot': 'rotation-only warp', 'naive': 'naive depth warp',
-              'noback': 'ShellStream, no background band', 'shell': 'ShellStream'}
-MODE_ORDER = ['stale', 'rot', 'naive', 'noback', 'shell']
+              'noback': 'ShellStream, no background band', 'shell1': 'ShellStream, one shell (1 GPU)',
+              'shell': 'ShellStream, both T4s (2 shells)'}
+MODE_ORDER = ['stale', 'rot', 'naive', 'noback', 'shell1', 'shell']
 
 
 def _style(ax, title=None, xlabel=None, ylabel=None):
@@ -69,11 +70,13 @@ def plot_quality(R, ax_rot, ax_tr):
         x = _np.arange(len(group))
         for i, m in enumerate(MODE_ORDER):
             vals = [_np.mean([r['psnr'] for r in rows if r['offset'] == o and r['mode'] == m]) for o in group]
-            ax.bar(x + (i - (n - 1) / 2) * w, vals, w * 0.86, color=PAL[[1, 2, 3, 4, 0][i]], label=MODE_NAMES[m])
+            ax.bar(x + (i - (n - 1) / 2) * w, vals, w * 0.86, color=PAL[[1, 2, 3, 4, 5, 0][i]], label=MODE_NAMES[m])
         ax.set_xticks(x); ax.set_xticklabels(group, rotation=20, ha='right', fontsize=8)
         _style(ax, title, None, 'PSNR (dB), mean of 3 scenes')
         ax.set_ylim(10, max(40, ax.get_ylim()[1]))
-    ax_rot.legend(frameon=False, fontsize=8, ncol=1, loc='upper right')
+    # one legend for both panels, above them, so it never covers bars
+    h, l = ax_rot.get_legend_handles_labels()
+    ax_rot.figure.legend(h, l, loc='lower center', bbox_to_anchor=(0.5, 1.0), ncol=6, frameon=False, fontsize=9)
 
 
 def plot_bandwidth(R, ax):
@@ -119,9 +122,9 @@ def plot_cost(R, ax):
 
 def plot_disocc(R, ax):
     D = R['disocclusion']
-    modes = ['stale', 'rot', 'naive', 'noback', 'shell']
+    modes = [m for m in MODE_ORDER if all(m in r for r in D)]
     vals = [_np.mean([r[m] for r in D if r[m] is not None]) for m in modes]
-    cols = [PAL[1], PAL[2], PAL[3], PAL[4], PAL[0]]
+    cols = [PAL[[1, 2, 3, 4, 5, 0][MODE_ORDER.index(m)]] for m in modes]
     y = _np.arange(len(modes))
     ax.barh(y, vals, color=cols, height=0.6)
     for yi, v in zip(y, vals):
@@ -129,6 +132,27 @@ def plot_disocc(R, ax):
     ax.set_yticks(y); ax.set_yticklabels([MODE_NAMES[m] for m in modes], fontsize=9); ax.invert_yaxis()
     _style(ax, 'PSNR inside newly revealed regions only (0.5 m strafes, 3 scenes)', 'dB', None)
     ax.grid(axis='x', alpha=.25); ax.grid(axis='y', alpha=0)
+
+
+def plot_host(R, ax_lat, ax_mis):
+    h2 = R['host']['h2']
+    rtts = sorted({r['rtt_ms'] for r in h2})
+    for pred, c, lab in ((False, PAL[1], 'prediction off (classic streaming)'), (True, PAL[0], 'input-predicted reprojection')):
+        y = [next(r['latency_ms_median'] for r in h2 if r['rtt_ms'] == t and r['prediction'] == pred) for t in rtts]
+        ax_lat.plot(rtts, y, '-o', color=c, lw=2, ms=6, label=lab)
+    ax_lat.legend(frameon=False, fontsize=9, loc='upper left'); ax_lat.set_ylim(bottom=0)
+    _style(ax_lat, 'Any unmodified game (Minetest): mouse-look latency', 'emulated RTT (ms)', 'input -> changed framebuffer (ms, median)')
+    h1 = [r for r in R['host']['h1']['rows'] if r['step_counts'][1] == 0 and r['step_counts'][0] > 0]
+    x = _np.arange(len(h1)); w = 0.38
+    ax_mis.bar(x - w / 2, [r['misalign_px_stale'] for r in h1], w * 0.9, color=PAL[1], label='stale frame (classic)')
+    pv = [r['misalign_px_predicted'] for r in h1]
+    ax_mis.bar(x + w / 2, pv, w * 0.9, color=PAL[0], label='predicted')
+    top = max(r['misalign_px_stale'] for r in h1)
+    for xi, v in zip(x, pv):          # the predicted bars are often too short to see: say their value
+        ax_mis.text(xi + w / 2, v + top * 0.015, f"{v:.1f} px", ha='center', va='bottom', fontsize=8, color=INK2)
+    ax_mis.set_xticks(x); ax_mis.set_xticklabels([f"{r['step_counts'][0]} counts" for r in h1], fontsize=8)
+    ax_mis.legend(frameon=False, fontsize=9, loc='upper left')
+    _style(ax_mis, 'How far the shown image is from the game\'s next frame', 'mouse step', 'misalignment (px)')
 
 
 def plot_all(R, save=None):
@@ -139,8 +163,11 @@ def plot_all(R, save=None):
     if 'quality' in R:
         fig, ax = _plt.subplots(1, 2, figsize=(15, 4.8), gridspec_kw=dict(width_ratios=[6, 8]))
         plot_quality(R, ax[0], ax[1]); fig.tight_layout(); figs.append(('quality', fig))
+    if 'host' in R:
+        fig, ax = _plt.subplots(1, 2, figsize=(14, 4.2))
+        plot_host(R, ax[0], ax[1]); fig.tight_layout(); figs.append(('host', fig))
     if 'disocclusion' in R:
-        fig, ax = _plt.subplots(1, 1, figsize=(9, 3.2))
+        fig, ax = _plt.subplots(1, 1, figsize=(9, 3.6))
         plot_disocc(R, ax); fig.tight_layout(); figs.append(('disocc', fig))
     if 'bandwidth' in R or 'cost_model' in R:
         fig, ax = _plt.subplots(1, 2, figsize=(15, 4.6))

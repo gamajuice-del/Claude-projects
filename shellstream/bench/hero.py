@@ -13,7 +13,7 @@ W, H = 960, 540
 
 def main():
     b = E.ShellBuilder([E.CpuBackend()], focus_budget=0.75e6, omni_R=256, quality="high", spp=2)
-    srv = S.ShellServer(b, port=8891, max_rate=5, animate=False).start()
+    srv = S.ShellServer(b, port=8891, max_rate=5, animate=False, max_refine=0).start()
     with sync_playwright() as p:
         br = launch(p)
         pg = br.new_page(viewport={"width": W, "height": H})

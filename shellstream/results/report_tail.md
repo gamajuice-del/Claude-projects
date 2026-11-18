@@ -18,6 +18,24 @@ The design above is the fourth iteration. Every change below was triggered by a 
 | 12 | With every other cause removed, ShellStream still lost 1.5 dB to the *stale frame at zero motion*; the focus layer alone differed from the identical stale draw | The GPU interpolates texture coordinates perspective-correctly *in the target view*; shell texels are a grid in the *source* view, so rubber-sheet triangles spanning a 2 m / 50 m depth ratio sampled almost only their near corner | Interpolate `(uv x z_src, z_src)` and divide per fragment: the exact source-affine mapping | Zero-motion output identical to the stale frame (mean abs. difference 0.00-0.02 / 255); texture mapping exact under motion too |
 | 13 | A 0.5 m jump in the plaza scene lost 4.3 dB after row 11; the other scenes were unchanged | Giving the *band* stencil priority over the fallback was wrong: next to a grazing wall the band holds "what's behind", while the omni cube correctly holds the wall itself, which is nearer | Only the focus layer outranks the fallback by stencil. Inside its holes, band and fallback compete by depth | Regression gone (14.6 -> 18.7 dB at debug scale); zero-motion exactness kept |
 
+**Pass 2 iterations** (game host and two-T4 shells):
+
+| # | Observation | Diagnosis | Change | Effect |
+|---|---|---|---|---|
+| 14 | Injected input had no effect on the game | No window manager on a virtual display, so the game never received keyboard focus | Focus the game window explicitly | Mouse and keys drive the game |
+| 15 | WebCodecs decoder failed to configure | `prefer-hardware` is unsupported where no hardware decoder exists | No preference, plus support negotiation with a JPEG fallback | H.264 decodes everywhere it is supported |
+| 16 | Test driver froze when sharing a process with the game host | Capture and encode loop starves the GIL | Run the server in its own process for experiments | Stable measurements |
+| 17 | Vertical prediction went the wrong way | Sign error in the pitch of the predicted rotation (in the shader and its numpy twin) | Corrected, verified on synthetic rotations | Vertical steps now predicted to within 0.4-0.8 px |
+| 18 | At 200 ms RTT the image jumped 28 px when the real frame landed | A fixed window of 2 un-acked frames throttled the stream to 2 frames per RTT, and game lag was counted in captured frames | In-flight window sized to the RTT; game lag kept in milliseconds | Jump down to 4 px at 200 ms RTT |
+| 19 | Prediction scored no better than the stale frame (PSNR) | Measurement flaw (duplicate captures), then a real one: the HUD was warped with the world | Step-response test; learned screen-fixed overlay mask | +0.4-1.8 dB from HUD-awareness |
+| 20 | "It's aliasing" (my hypothesis for the remaining error) | **Refuted**: the game reproduces a view at 53.5 dB. The real causes were rasterization differences under rotation plus a ±15 % calibration bias | Misalignment (px) as the primary metric; calibration fitted over multi-frame windows | Calibration within 1-2 % of a direct measurement |
+| 21 | Two-T4 compositing gave no gain in the frozen test | Shells were aged out by wall-clock time, so the hedge on the side the camera moved to was dropped | Age counted in updates, not seconds | Hedges survive slow renders and network stalls |
+| 22 | The omni fallback moved with the hedge shell | It was rendered at the hedge centre | Rendered by T4 #1 but centred on the prediction | Fallback parallax unchanged from pass 1 |
+| 23 | Compositing every shell lost 0.1-0.5 dB on rotations and jumps while gaining up to 6 dB sideways | Hedges 0.45 m away overrode pixels the primary shell or its omni get right (view-dependent reflections) | A secondary shell is used only when its centre is within 0.15 m of the primary's distance, after >0.15 m of movement | No pose loses PSNR any more (rotations, forward, jump identical to one shell); sideways gains kept (+6.0 dB at 0.5 m). The +0.3 dB forward gain is given up |
+| 24 | With the HUD mask, browser look latency with prediction was no better than without (107 vs. 115 ms) | The mask counted every block that stayed unchanged while the view turned as overlay, including plain sky and flat terrain (24.5 % of the screen). The browser left those pixels unwarped, and the latency probe row lay in them | Only blocks that discriminate vote: a changed block is world; an unchanged block is overlay only if moving it with the world would have visibly changed it; plain blocks don't vote | Mask now covers just the version line, chat, crosshair, hearts, hotbar and hand; the view moves on the first display frame after input |
+| 25 | The next browser run showed no prediction at all | The calibration fit was 0.37, so the client switched prediction off, as designed. Cause: the test world kept its in-game clock between runs and had reached night (21:56); dark frames don't correlate, and each new poor fit overwrote the good one | Test world starts at 10:00 with the clock stopped. The calibrator keeps a good fit until a new window fits well or better, since pixels per count don't drift | Prediction survives dark stretches, menus and blank walls once calibrated |
+| 26 | Calibrated px/count differed by 12 % between two runs of the same game (-0.82 vs. -0.93), and the fit sat 5 % above a direct measurement | At a 90° vertical (121° horizontal) field of view a turn moves the view's edges up to 3x as far as its centre, so one shift fitted over a wide crop depends on where the texture is. Summing per-frame shifts over a window also accumulated their sub-pixel bias | Resample the crop to azimuth/elevation before phase correlation (one map per axis), so kx, ky are the rotation per count in centre pixels (same wire format). Measure each window's shift in one correlation | Synthetic views with a known rotation (`host_calib.py`): error +5.1/+12.6 % (horizontal/vertical) -> +3.0/-1.7 %. On the game: online fit within 0.5 % of the direct measurement; residual misalignment 0.03-0.27 px for steps up to 36 px |
+
 ## 6. Kaggle: what this uses, and what is permitted
 
 * **Hardware target:** Kaggle's "GPU T4 x2" accelerator: two NVIDIA T4s (Turing, sm_75, 16 GB, 70 W, one
@@ -36,6 +54,10 @@ The design above is the fourth iteration. Every change below was triggered by a 
     account holder's own short sessions at most, never shared;
   * keeps the code **portable**: the same `server.py` runs unchanged on any CUDA machine with T4s, which is
     where a real deployment belongs.
+* **The game host (section 11) is not run on Kaggle.** Hosting a game is the clearest case of "activity
+  unrelated to ML data science", and Kaggle kernels lack the display server and GPU graphics drivers a game
+  needs anyway. The notebook only benchmarks the pieces that are plain GPU compute (NVENC encode, shell
+  rendering) and documents how to run the host on a T4 machine.
 * Please read [kaggle.com/terms](https://www.kaggle.com/terms) yourself before enabling section 5 of the notebook.
 
 ## 7. Limitations (stated plainly)
@@ -57,9 +79,16 @@ The design above is the fourth iteration. Every change below was triggered by a 
    band/fallback coverage. Not yet diagnosed.
 5. **Classic-mode latency in the experiment includes a slow CPU server.** The comparison of shapes is
    valid; the T4-adjusted classic latency is an estimate.
-6. **Single-player.** Client-authoritative play is the right split for single-player. Multiplayer needs
+6. **Game-host mode predicts mouse-look only.** Closed games give no depth and no game state. Movement,
+   actions and in-game reactions keep the full round trip, and games with mouse acceleration or orbit
+   cameras fall back to unpredicted streaming (detected by the fit quality). The Windows backend needed for
+   the official Roblox client is not built.
+7. **Two shells cost twice the bytes**, and on CPU they cost twice the render time. On the T4s each GPU
+   renders one shell, so the second shell costs no latency, but bandwidth doubles unless the colour layers
+   move to NVENC video (designed, not built for shells; built for the game host).
+8. **Single-player.** Client-authoritative play is the right split for single-player. Multiplayer needs
    standard netcode (server authority, client prediction, reconciliation) layered on top.
-7. **The renderer is a stand-in.** A sphere-traced SDF city with soft shadows, AO, reflections and 24
+9. **The renderer is a stand-in.** A sphere-traced SDF city with soft shadows, AO, reflections and 24
    lights is heavy enough to make the point. A production renderer (a rasterizer or path tracer of mesh
    scenes) would expose the same interface: views in, colour + depth + normals out.
 
@@ -71,6 +100,10 @@ networked games; speculative execution for cloud gaming that renders likely futu
 mispredictions by image-based rendering (Outatime, Lee et al. 2015); collaborative rendering with a weak
 local renderer (Kahawai, Cuervo et al. 2015); shading-atlas streaming of object-space shading (Mueller et
 al. 2018); split VR rendering with panoramic backgrounds (Furion, Lai et al. 2017).
+
+Frame-streaming hosts (Parsec, Sunshine/Moonlight, GeForce NOW) capture, encode with NVENC and inject
+input, as the game host does. Reprojecting streamed frames by local head motion is standard in VR remote
+rendering. Speculative cloud gaming (Outatime) and "negative latency" claims predict input on the server.
 
 To my knowledge, the following specific elements, and their combination into one browser-delivered
 system for Kaggle-class GPUs, are new:
@@ -89,6 +122,11 @@ system for Kaggle-class GPUs, are new:
    holding the world's geometry.
 7. **One kernel source, two targets**: the CPU build is fallback, test oracle and cost-model
    instrumentation at once.
+8. **Input-predicted reprojection for closed games, learned online**: pixels per mouse count, game lag (in
+   time, fitted over multi-frame windows) and a screen-fixed overlay mask, all inferred from the frames
+   and the injected input, with no knowledge of the game.
+9. **Multi-viewpoint shells across GPUs**: each T4 renders a complete shell from a different hedge
+   centre, and the client composites them with per-shell stencil priority.
 
 ## 9. How to run
 
@@ -101,6 +139,10 @@ system for Kaggle-class GPUs, are new:
   scikit-image, matplotlib).
 
 ## 10. Next steps
+
+0. Game host: a Windows capture/input backend (DXGI duplication, virtual HID) for Windows-only games such as
+   Roblox; monocular depth estimation on the second T4's tensor cores to add translation parallax for
+   closed games; NVENC video for the shells' colour layers.
 
 1. NVENC H.264/HEVC for the colour layers. The focus layer compresses about 4x better with inter-frame
    coding, as well as classic frames do. Keep the focus pixel size fixed and let its field of view breathe.

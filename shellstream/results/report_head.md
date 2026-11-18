@@ -27,6 +27,13 @@ logic and the final image. At every display refresh it re-projects the newest sh
 pose sampled at that instant, using a mesh that tears exactly at the server-marked occlusion edges and
 only once motion has actually opened a gap.
 
+**Pass 2** extends this in two directions. **Any game:** a game host streams *unmodified* games (tested
+with the open-source game Minetest). It injects your input, encodes with NVENC, and learns online how the
+image moves per mouse count and which pixels are HUD. The browser then predicts mouse-look locally for a
+game it knows nothing about (section 11, which also covers Roblox). **Both T4s fully:** each T4 now renders
+a complete shell from its own viewpoint, the browser composites them, and GPU stages overlap host stages,
+with a load governor, idle refinement and NVENC (section 12).
+
 Looking, moving, jumping and picking things up therefore have the *latency* of a local PC: about one
 display frame. Network RTT, jitter and even multi-second stalls only affect how *fresh* the lighting
 and distant content are. Human perception tolerates that far better than lag between hand and eye. *Image

@@ -7,9 +7,10 @@ import numpy as np
 
 from common import RESULTS
 
-MODES = ["local1", "local2", "stale", "rot", "naive", "noback", "shell"]
+MODES = ["local1", "local2", "stale", "rot", "naive", "noback", "shell1", "shell"]
 NAMES = {"local1": "local PC, 1 spp", "local2": "local PC, 2 spp", "stale": "classic (stale frame)", "rot": "rotation-only warp",
-         "naive": "naive depth warp", "noback": "ShellStream w/o band", "shell": "**ShellStream**"}
+         "naive": "naive depth warp", "noback": "ShellStream w/o band", "shell1": "ShellStream, 1 shell",
+         "shell": "**ShellStream, both T4s**"}
 
 
 def load(n):
@@ -62,22 +63,22 @@ def t_quality(Q, offsets=None, metric="psnr"):
 
 
 def t_ablation(Qr, Qn):
-    out = ["| displacement | ShellStream, scene with reflections | gap to local 2 spp | ShellStream, reflections off | gap to local 2 spp |", "|---|---|---|---|---|"]
+    out = ["| displacement | one shell, scene with reflections | gap to local 2 spp | one shell, reflections off | gap to local 2 spp |", "|---|---|---|---|---|"]
     offs = []
     for r in Qr:
         if r["offset"] not in offs:
             offs.append(r["offset"])
     for o in offs:
-        a = np.mean([r["psnr"] for r in Qr if r["offset"] == o and r["mode"] == "shell"])
+        a = np.mean([r["psnr"] for r in Qr if r["offset"] == o and r["mode"] == "shell1"])
         la = np.mean([r["psnr"] for r in Qr if r["offset"] == o and r["mode"] == "local2"])
-        b = np.mean([r["psnr"] for r in Qn if r["offset"] == o and r["mode"] == "shell"])
+        b = np.mean([r["psnr"] for r in Qn if r["offset"] == o and r["mode"] == "shell1"])
         lb = np.mean([r["psnr"] for r in Qn if r["offset"] == o and r["mode"] == "local2"])
         out.append(f"| {o} | {a:.2f} dB | {la - a:.2f} dB | {b:.2f} dB | {lb - b:.2f} dB |")
     return "\n".join(out)
 
 
 def t_disocc(D):
-    modes = ["stale", "rot", "naive", "noback", "shell"]
+    modes = [m for m in ["stale", "rot", "naive", "noback", "shell1", "shell"] if all(m in r for r in D)]
     out = ["| scene, displacement | pixels newly revealed | " + " | ".join(NAMES[m] for m in modes) + " |", "|---|---|" + "---|" * len(modes)]
     for r in D:
         best = max(r[m] for m in modes if r[m] is not None)
@@ -85,6 +86,33 @@ def t_disocc(D):
         out.append(f"| {r['scene']}, {r['offset']} | {100 * r['disoccluded_fraction']:.1f} % | " + " | ".join(cells) + " |")
     means = [np.mean([r[m] for r in D if r[m] is not None]) for m in modes]
     out.append("| **mean** | | " + " | ".join(f"**{v:.2f}**" if v == max(means) else f"{v:.2f}" for v in means) + " |")
+    return "\n".join(out)
+
+
+def t_host_h1(Hh):
+    out = ["| mouse step (counts) | turn (px at the centre) | misalignment left, stale frame | misalignment left, predicted | PSNR stale / predicted / predicted + HUD-aware |",
+           "|---|---|---|---|---|"]
+    for r in Hh["rows"]:
+        out.append(f"| {r['step_counts'][0]}, {r['step_counts'][1]} | {r['step_px']:.0f} px | {r['misalign_px_stale']:.1f} px | "
+                   f"**{r['misalign_px_predicted']:.1f} px** | {r['psnr_stale']:.1f} / {r['psnr_predicted']:.1f} / **{r['psnr_predicted_hud']:.1f}** dB |")
+    c = Hh["calibration"]
+    direct = [r["direct_kx"] for r in Hh["rows"] if r.get("direct_kx") is not None]
+    dtxt = (f"; measured directly from the large horizontal steps: {np.median(direct):.3f}, "
+            f"so the online fit is off by {100 * (c['kx'] / np.median(direct) - 1):+.1f} %") if direct else ""
+    out.append(f"\nOnline calibration after 20 s of ordinary mouse-look: {c['kx']:.3f} / {c['ky']:.3f} px per count at the "
+               f"image centre, game lag {c.get('lag_ms', 0):.0f} ms, fit R^2 {c['r2']:.3f}{dtxt}.")
+    return "\n".join(out)
+
+
+def t_host_h2(H2):
+    rows = {}
+    for r in H2:
+        rows.setdefault(r["rtt_ms"], {})[r["prediction"]] = r
+    out = ["| emulated RTT | mouse-look latency, prediction ON | mouse-look latency, prediction OFF (classic) | image jump when the real frame lands |",
+           "|---|---|---|---|"]
+    for rtt in sorted(rows):
+        on, off = rows[rtt].get(True, {}), rows[rtt].get(False, {})
+        out.append(f"| {rtt} ms | **{on.get('latency_ms_median', 0):.0f} ms** | {off.get('latency_ms_median', 0):.0f} ms | {on.get('max_jump_px_median', 0):.0f} px |")
     return "\n".join(out)
 
 
@@ -154,6 +182,9 @@ def main():
     if B: parts["BANDWIDTH"] = t_bandwidth(B)
     D = load("disocclusion.json")
     if D: parts["DISOCC"] = t_disocc(D)
+    Hh = load("host.json")
+    if Hh:
+        parts["HOST_H1"] = t_host_h1(Hh["h1"]); parts["HOST_H2"] = t_host_h2(Hh["h2"])
     if C: parts["CODEC"] = t_codec(C)
     if V: parts["VIDEO"] = t_video(V)
     if CM and CC: parts["COST"] = t_cost(CM, CC)
