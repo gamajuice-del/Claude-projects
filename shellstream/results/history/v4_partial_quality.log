@@ -1,0 +1,25 @@
++ python3 -u latency.py
+404 GET /favicon.ico (127.0.0.1) 0.42ms
+{'pose_ms_median': 53.0, 'pose_ms_p90': 57.8, 'pixel_ms_median': 53.0, 'pixel_ms_p90': 57.8, 'frame_interval_ms_median': 56.2, 'n': 12, 'mode': 'shell', 'rtt_ms': 0, 'server_build_ms_median': 166.5}
+{'pose_ms_median': 55.9, 'pose_ms_p90': 58.1, 'pixel_ms_median': 55.9, 'pixel_ms_p90': 58.1, 'frame_interval_ms_median': 57.3, 'n': 12, 'mode': 'shell', 'rtt_ms': 25, 'server_build_ms_median': 130.5}
+{'pose_ms_median': 56.3, 'pose_ms_p90': 57.5, 'pixel_ms_median': 56.3, 'pixel_ms_p90': 57.5, 'frame_interval_ms_median': 59.4, 'n': 12, 'mode': 'shell', 'rtt_ms': 50, 'server_build_ms_median': 128.1}
+{'pose_ms_median': 53.1, 'pose_ms_p90': 58.5, 'pixel_ms_median': 53.1, 'pixel_ms_p90': 58.5, 'frame_interval_ms_median': 56.8, 'n': 12, 'mode': 'shell', 'rtt_ms': 100, 'server_build_ms_median': 145.4}
+{'pose_ms_median': 56.8, 'pose_ms_p90': 79.4, 'pixel_ms_median': 56.8, 'pixel_ms_p90': 79.4, 'frame_interval_ms_median': 58.9, 'n': 12, 'mode': 'shell', 'rtt_ms': 200, 'server_build_ms_median': 141.7}
+{'pose_ms_median': 240.2, 'pose_ms_p90': 246.1, 'pixel_ms_median': 240.2, 'pixel_ms_p90': 246.1, 'frame_interval_ms_median': 29.3, 'n': 12, 'mode': 'classic', 'rtt_ms': 0, 'server_build_ms_median': 134.3}
+{'pose_ms_median': 253.1, 'pose_ms_p90': 264.6, 'pixel_ms_median': 253.1, 'pixel_ms_p90': 264.6, 'frame_interval_ms_median': 27.9, 'n': 12, 'mode': 'classic', 'rtt_ms': 25, 'server_build_ms_median': 109.4}
+{'pose_ms_median': 277.5, 'pose_ms_p90': 288.7, 'pixel_ms_median': 277.5, 'pixel_ms_p90': 288.7, 'frame_interval_ms_median': 29.1, 'n': 12, 'mode': 'classic', 'rtt_ms': 50, 'server_build_ms_median': 98.0}
+{'pose_ms_median': 330.3, 'pose_ms_p90': 341.4, 'pixel_ms_median': 330.3, 'pixel_ms_p90': 341.4, 'frame_interval_ms_median': 27.8, 'n': 12, 'mode': 'classic', 'rtt_ms': 100, 'server_build_ms_median': 95.2}
+{'pose_ms_median': 414.2, 'pose_ms_p90': 427.6, 'pixel_ms_median': 414.2, 'pixel_ms_p90': 427.6, 'frame_interval_ms_median': 27.1, 'n': 12, 'mode': 'classic', 'rtt_ms': 200, 'server_build_ms_median': 98.4}
+shell {'frame_interval_ms_median': 55.6, 'frame_interval_ms_max': 88.2, 'view_lag_deg_max_during_stall': 0.0, 'frames_during_stall': 19}
+classic {'frame_interval_ms_median': 27.5, 'frame_interval_ms_max': 51.9, 'view_lag_deg_max_during_stall': 426.8, 'frames_during_stall': 38}
++ python3 -u quality.py
+404 GET /favicon.ico (127.0.0.1) 0.41ms
+console: Failed to load resource: the server responded with a status of 404 (Not Found)
+plaza shell {'build_ms': 1465.84, 'gpu_ms': [1446.64], 'host_ms': 14.63, 'split': 0.5, 'bytes': 194745, 'W': 816, 'H': 496, 'L_ms': 400, 'margins_deg': [7, 6], 'band': 0.5, 'enc_ms': [3.36]}
+plaza none {'local1': 28.82, 'local2': 32.86, 'stale': 31.35, 'rot': 31.35, 'naive': 27.99, 'noback': 29.85, 'shell': 29.85}
+plaza yaw 15deg {'local1': 30.01, 'local2': 33.53, 'stale': 14.44, 'rot': 30.08, 'naive': 27.3, 'noback': 28.97, 'shell': 28.97}
+plaza yaw 30deg {'local1': 30.2, 'local2': 34.62, 'stale': 14.03, 'rot': 30.27, 'naive': 27.92, 'noback': 28.96, 'shell': 28.95}
+plaza yaw 60deg {'local1': 36.02, 'local2': 40.05, 'stale': 13.5, 'rot': 33.08, 'naive': 33.08, 'noback': 33.08, 'shell': 33.08}
+plaza pitch 10deg {'local1': 29.06, 'local2': 33.23, 'stale': 14.77, 'rot': 31.49, 'naive': 28.15, 'noback': 30.1, 'shell': 30.1}
+plaza strafe 0.1m {'local1': 28.62, 'local2': 32.57, 'stale': 19.92, 'rot': 19.92, 'naive': 19.17, 'noback': 19.01, 'shell': 20.4}
+plaza strafe 0.25m {'local1': 28.23, 'local2': 32.33, 'stale': 16.27, 'rot': 16.27, 'naive': 17.43, 'noback': 16.8, 'shell': 19.3}

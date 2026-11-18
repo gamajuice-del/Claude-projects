@@ -1,0 +1,11 @@
+404 GET /favicon.ico (127.0.0.1) 3.77ms
+console: Failed to load resource: the server responded with a status of 404 (Not Found)
+plaza shell {'build_ms': 1498.95, 'gpu_ms': [1490.12], 'host_ms': 3.69, 'split': 0.5, 'bytes': 216764, 'W': 816, 'H': 496, 'L_ms': 400, 'margins_deg': [7, 6], 'band': 0.5, 'enc_ms': [4.14]}
+plaza none {'local1': 28.82, 'local2': 32.86, 'stale': 27.74, 'rot': 28.03, 'naive': 28.16, 'noback': 26.78, 'shell': 26.5}
+plaza yaw 15deg {'local1': 30.01, 'local2': 33.53, 'stale': 14.62, 'rot': 28.02, 'naive': 27.39, 'noback': 26.29, 'shell': 25.75}
+plaza yaw 30deg {'local1': 30.2, 'local2': 34.62, 'stale': 14.18, 'rot': 29.4, 'naive': 28.02, 'noback': 26.82, 'shell': 26.27}
+plaza yaw 60deg {'local1': 36.02, 'local2': 40.05, 'stale': 13.64, 'rot': 31.98, 'naive': 33.14, 'noback': 33.14, 'shell': 33.14}
+plaza pitch 10deg {'local1': 29.06, 'local2': 33.23, 'stale': 14.97, 'rot': 29.43, 'naive': 28.31, 'noback': 26.83, 'shell': 26.48}
+plaza strafe 0.1m {'local1': 28.62, 'local2': 32.57, 'stale': 19.91, 'rot': 19.92, 'naive': 19.34, 'noback': 18.78, 'shell': 19.98}
+plaza strafe 0.25m {'local1': 28.23, 'local2': 32.33, 'stale': 16.43, 'rot': 16.39, 'naive': 17.61, 'noback': 16.7, 'shell': 18.89}
+plaza strafe 0.5m {'local1': 27.33, 'local2': 31.41, 'stale': 14.34, 'rot': 14.31, 'naive': 16.4, 'noback': 15.13, 'shell': 17.78}

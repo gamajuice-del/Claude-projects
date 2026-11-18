@@ -1,0 +1,22 @@
+{
+ "ss_render": {
+  "registers": 107,
+  "stack": 0,
+  "spill_st": 0,
+  "spill_ld": 0
+ },
+ "ss_conn": {
+  "registers": 49,
+  "stack": 0,
+  "spill_st": 0,
+  "spill_ld": 0
+ },
+ "ss_brick": {
+  "registers": 25,
+  "stack": 0,
+  "spill_st": 0,
+  "spill_ld": 0
+ },
+ "nvrtc_log": "",
+ "ptx_lines": 22432
+}

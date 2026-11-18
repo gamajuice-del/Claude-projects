@@ -1,0 +1,198 @@
+{
+ "shells": [
+  {
+   "scene": "plaza",
+   "motion": "standing",
+   "total": 317886,
+   "classic_jpeg_1080p": 216314,
+   "parts": {
+    "omni colour": 45436,
+    "omni depth": 19866,
+    "omni topology": 5843,
+    "back colour": 48722,
+    "back depth": 23736,
+    "back topology": 19213,
+    "front colour": 112598,
+    "front depth": 28382,
+    "front topology": 10449,
+    "collision brick": 1066,
+    "header": 2571
+   },
+   "focus": "1344x752",
+   "margins": [
+    7.0,
+    6.0
+   ],
+   "band": 0.5,
+   "cpu_build_ms": 3281
+  },
+  {
+   "scene": "plaza",
+   "motion": "running+turning",
+   "total": 324888,
+   "classic_jpeg_1080p": 216314,
+   "parts": {
+    "omni colour": 48863,
+    "omni depth": 18737,
+    "omni topology": 5632,
+    "back colour": 46120,
+    "back depth": 24334,
+    "back topology": 19189,
+    "front colour": 123178,
+    "front depth": 24291,
+    "front topology": 10876,
+    "collision brick": 1044,
+    "header": 2620
+   },
+   "focus": "1488x672",
+   "margins": [
+    12.5,
+    6.0
+   ],
+   "band": 0.68,
+   "cpu_build_ms": 3249
+  },
+  {
+   "scene": "pillars",
+   "motion": "standing",
+   "total": 374893,
+   "classic_jpeg_1080p": 242925,
+   "parts": {
+    "omni colour": 73294,
+    "omni depth": 14289,
+    "omni topology": 7854,
+    "back colour": 38212,
+    "back depth": 27094,
+    "back topology": 21202,
+    "front colour": 147003,
+    "front depth": 26046,
+    "front topology": 14143,
+    "collision brick": 3055,
+    "header": 2697
+   },
+   "focus": "1344x752",
+   "margins": [
+    7.0,
+    6.0
+   ],
+   "band": 0.5,
+   "cpu_build_ms": 4264
+  },
+  {
+   "scene": "pillars",
+   "motion": "running+turning",
+   "total": 391711,
+   "classic_jpeg_1080p": 242925,
+   "parts": {
+    "omni colour": 73527,
+    "omni depth": 14968,
+    "omni topology": 7727,
+    "back colour": 40993,
+    "back depth": 29142,
+    "back topology": 23364,
+    "front colour": 155093,
+    "front depth": 26514,
+    "front topology": 14472,
+    "collision brick": 3054,
+    "header": 2853
+   },
+   "focus": "1488x672",
+   "margins": [
+    12.5,
+    6.0
+   ],
+   "band": 0.68,
+   "cpu_build_ms": 4339
+  },
+  {
+   "scene": "street",
+   "motion": "standing",
+   "total": 202588,
+   "classic_jpeg_1080p": 134960,
+   "parts": {
+    "omni colour": 53995,
+    "omni depth": 11041,
+    "omni topology": 5582,
+    "back colour": 15612,
+    "back depth": 9202,
+    "back topology": 9671,
+    "front colour": 73943,
+    "front depth": 12345,
+    "front topology": 6933,
+    "collision brick": 1695,
+    "header": 2565
+   },
+   "focus": "1344x752",
+   "margins": [
+    7.0,
+    6.0
+   ],
+   "band": 0.5,
+   "cpu_build_ms": 2377
+  },
+  {
+   "scene": "street",
+   "motion": "running+turning",
+   "total": 198962,
+   "classic_jpeg_1080p": 134960,
+   "parts": {
+    "omni colour": 51951,
+    "omni depth": 12123,
+    "omni topology": 6011,
+    "back colour": 15242,
+    "back depth": 9534,
+    "back topology": 9507,
+    "front colour": 70988,
+    "front depth": 12966,
+    "front topology": 6437,
+    "collision brick": 1458,
+    "header": 2741
+   },
+   "focus": "1488x672",
+   "margins": [
+    12.5,
+    6.0
+   ],
+   "band": 0.68,
+   "cpu_build_ms": 2056
+  }
+ ],
+ "depth_codecs": [
+  {
+   "raw u16": 505344,
+   "deflate(raw)": 72001,
+   "deflate(1st-order delta)": 31380,
+   "PNG 16-bit": 31080,
+   "ours level1 ms": 9.19,
+   "ours: 2nd-order affine pred + zigzag + planes, deflate-1": 40974,
+   "ours (deflate-6)": 28382,
+   "scene": "plaza",
+   "texels": 252672,
+   "topology deflate": 10449
+  },
+  {
+   "raw u16": 505344,
+   "deflate(raw)": 32939,
+   "deflate(1st-order delta)": 28709,
+   "PNG 16-bit": 26919,
+   "ours level1 ms": 9.64,
+   "ours: 2nd-order affine pred + zigzag + planes, deflate-1": 36400,
+   "ours (deflate-6)": 26046,
+   "scene": "pillars",
+   "texels": 252672,
+   "topology deflate": 14143
+  },
+  {
+   "raw u16": 505344,
+   "deflate(raw)": 15532,
+   "deflate(1st-order delta)": 14922,
+   "PNG 16-bit": 12464,
+   "ours level1 ms": 5.35,
+   "ours: 2nd-order affine pred + zigzag + planes, deflate-1": 18630,
+   "ours (deflate-6)": 12345,
+   "scene": "street",
+   "texels": 252672,
+   "topology deflate": 6933
+  }
+ ]
+}

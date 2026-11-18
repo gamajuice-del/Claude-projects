@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+shellstream/build/
+shellstream/results/**/*.npz
+shellstream/results/*.npz
+shellstream/results/*.ptx

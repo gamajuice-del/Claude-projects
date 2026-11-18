@@ -1,0 +1,530 @@
+{
+ "rows": [
+  {
+   "scene": "plaza",
+   "codec": "PNG 16-bit (reference)",
+   "level": null,
+   "bytes": 31016,
+   "ms": null
+  },
+  {
+   "scene": "plaza",
+   "codec": "left, planes",
+   "level": 1,
+   "bytes": 45928,
+   "ms": 3.39
+  },
+  {
+   "scene": "plaza",
+   "codec": "left, planes",
+   "level": 3,
+   "bytes": 36258,
+   "ms": 3.78
+  },
+  {
+   "scene": "plaza",
+   "codec": "left, planes",
+   "level": 6,
+   "bytes": 29449,
+   "ms": 10.67
+  },
+  {
+   "scene": "plaza",
+   "codec": "left, interleaved",
+   "level": 1,
+   "bytes": 55074,
+   "ms": 3.04
+  },
+  {
+   "scene": "plaza",
+   "codec": "left, interleaved",
+   "level": 3,
+   "bytes": 40775,
+   "ms": 4.89
+  },
+  {
+   "scene": "plaza",
+   "codec": "left, interleaved",
+   "level": 6,
+   "bytes": 31477,
+   "ms": 12.99
+  },
+  {
+   "scene": "plaza",
+   "codec": "2nd-order, planes",
+   "level": 1,
+   "bytes": 48647,
+   "ms": 3.61
+  },
+  {
+   "scene": "plaza",
+   "codec": "2nd-order, planes",
+   "level": 3,
+   "bytes": 39565,
+   "ms": 4.87
+  },
+  {
+   "scene": "plaza",
+   "codec": "2nd-order, planes",
+   "level": 6,
+   "bytes": 32347,
+   "ms": 9.87
+  },
+  {
+   "scene": "plaza",
+   "codec": "2nd-order, interleaved",
+   "level": 1,
+   "bytes": 57042,
+   "ms": 3.83
+  },
+  {
+   "scene": "plaza",
+   "codec": "2nd-order, interleaved",
+   "level": 3,
+   "bytes": 45612,
+   "ms": 5.65
+  },
+  {
+   "scene": "plaza",
+   "codec": "2nd-order, interleaved",
+   "level": 6,
+   "bytes": 35855,
+   "ms": 13.46
+  },
+  {
+   "scene": "plaza",
+   "codec": "planar L+U-UL, planes",
+   "level": 1,
+   "bytes": 43541,
+   "ms": 3.51
+  },
+  {
+   "scene": "plaza",
+   "codec": "planar L+U-UL, planes",
+   "level": 3,
+   "bytes": 37367,
+   "ms": 5.7
+  },
+  {
+   "scene": "plaza",
+   "codec": "planar L+U-UL, planes",
+   "level": 6,
+   "bytes": 30349,
+   "ms": 14.58
+  },
+  {
+   "scene": "plaza",
+   "codec": "planar L+U-UL, interleaved",
+   "level": 1,
+   "bytes": 51384,
+   "ms": 3.71
+  },
+  {
+   "scene": "plaza",
+   "codec": "planar L+U-UL, interleaved",
+   "level": 3,
+   "bytes": 43421,
+   "ms": 6.48
+  },
+  {
+   "scene": "plaza",
+   "codec": "planar L+U-UL, interleaved",
+   "level": 6,
+   "bytes": 33974,
+   "ms": 17.78
+  },
+  {
+   "scene": "plaza",
+   "codec": "MED (JPEG-LS), planes",
+   "level": 1,
+   "bytes": 41147,
+   "ms": 3.23
+  },
+  {
+   "scene": "plaza",
+   "codec": "MED (JPEG-LS), planes",
+   "level": 3,
+   "bytes": 35573,
+   "ms": 5.55
+  },
+  {
+   "scene": "plaza",
+   "codec": "MED (JPEG-LS), planes",
+   "level": 6,
+   "bytes": 28653,
+   "ms": 14.28
+  },
+  {
+   "scene": "plaza",
+   "codec": "MED (JPEG-LS), interleaved",
+   "level": 1,
+   "bytes": 48145,
+   "ms": 2.7
+  },
+  {
+   "scene": "plaza",
+   "codec": "MED (JPEG-LS), interleaved",
+   "level": 3,
+   "bytes": 41151,
+   "ms": 6.24
+  },
+  {
+   "scene": "plaza",
+   "codec": "MED (JPEG-LS), interleaved",
+   "level": 6,
+   "bytes": 31772,
+   "ms": 17.0
+  },
+  {
+   "scene": "pillars",
+   "codec": "PNG 16-bit (reference)",
+   "level": null,
+   "bytes": 26279,
+   "ms": null
+  },
+  {
+   "scene": "pillars",
+   "codec": "left, planes",
+   "level": 1,
+   "bytes": 41704,
+   "ms": 3.66
+  },
+  {
+   "scene": "pillars",
+   "codec": "left, planes",
+   "level": 3,
+   "bytes": 34997,
+   "ms": 4.24
+  },
+  {
+   "scene": "pillars",
+   "codec": "left, planes",
+   "level": 6,
+   "bytes": 26645,
+   "ms": 10.34
+  },
+  {
+   "scene": "pillars",
+   "codec": "left, interleaved",
+   "level": 1,
+   "bytes": 46847,
+   "ms": 3.87
+  },
+  {
+   "scene": "pillars",
+   "codec": "left, interleaved",
+   "level": 3,
+   "bytes": 37768,
+   "ms": 5.58
+  },
+  {
+   "scene": "pillars",
+   "codec": "left, interleaved",
+   "level": 6,
+   "bytes": 28220,
+   "ms": 11.35
+  },
+  {
+   "scene": "pillars",
+   "codec": "2nd-order, planes",
+   "level": 1,
+   "bytes": 44006,
+   "ms": 3.13
+  },
+  {
+   "scene": "pillars",
+   "codec": "2nd-order, planes",
+   "level": 3,
+   "bytes": 36859,
+   "ms": 3.92
+  },
+  {
+   "scene": "pillars",
+   "codec": "2nd-order, planes",
+   "level": 6,
+   "bytes": 29328,
+   "ms": 11.52
+  },
+  {
+   "scene": "pillars",
+   "codec": "2nd-order, interleaved",
+   "level": 1,
+   "bytes": 49930,
+   "ms": 3.93
+  },
+  {
+   "scene": "pillars",
+   "codec": "2nd-order, interleaved",
+   "level": 3,
+   "bytes": 40415,
+   "ms": 6.09
+  },
+  {
+   "scene": "pillars",
+   "codec": "2nd-order, interleaved",
+   "level": 6,
+   "bytes": 31578,
+   "ms": 14.7
+  },
+  {
+   "scene": "pillars",
+   "codec": "planar L+U-UL, planes",
+   "level": 1,
+   "bytes": 38918,
+   "ms": 3.58
+  },
+  {
+   "scene": "pillars",
+   "codec": "planar L+U-UL, planes",
+   "level": 3,
+   "bytes": 34426,
+   "ms": 5.15
+  },
+  {
+   "scene": "pillars",
+   "codec": "planar L+U-UL, planes",
+   "level": 6,
+   "bytes": 27884,
+   "ms": 12.57
+  },
+  {
+   "scene": "pillars",
+   "codec": "planar L+U-UL, interleaved",
+   "level": 1,
+   "bytes": 44894,
+   "ms": 3.65
+  },
+  {
+   "scene": "pillars",
+   "codec": "planar L+U-UL, interleaved",
+   "level": 3,
+   "bytes": 38775,
+   "ms": 4.93
+  },
+  {
+   "scene": "pillars",
+   "codec": "planar L+U-UL, interleaved",
+   "level": 6,
+   "bytes": 30504,
+   "ms": 15.45
+  },
+  {
+   "scene": "pillars",
+   "codec": "MED (JPEG-LS), planes",
+   "level": 1,
+   "bytes": 36359,
+   "ms": 2.16
+  },
+  {
+   "scene": "pillars",
+   "codec": "MED (JPEG-LS), planes",
+   "level": 3,
+   "bytes": 32120,
+   "ms": 3.36
+  },
+  {
+   "scene": "pillars",
+   "codec": "MED (JPEG-LS), planes",
+   "level": 6,
+   "bytes": 25765,
+   "ms": 8.76
+  },
+  {
+   "scene": "pillars",
+   "codec": "MED (JPEG-LS), interleaved",
+   "level": 1,
+   "bytes": 41370,
+   "ms": 2.26
+  },
+  {
+   "scene": "pillars",
+   "codec": "MED (JPEG-LS), interleaved",
+   "level": 3,
+   "bytes": 35989,
+   "ms": 4.84
+  },
+  {
+   "scene": "pillars",
+   "codec": "MED (JPEG-LS), interleaved",
+   "level": 6,
+   "bytes": 27817,
+   "ms": 9.74
+  },
+  {
+   "scene": "street",
+   "codec": "PNG 16-bit (reference)",
+   "level": null,
+   "bytes": 12644,
+   "ms": null
+  },
+  {
+   "scene": "street",
+   "codec": "left, planes",
+   "level": 1,
+   "bytes": 25829,
+   "ms": 2.19
+  },
+  {
+   "scene": "street",
+   "codec": "left, planes",
+   "level": 3,
+   "bytes": 21202,
+   "ms": 2.82
+  },
+  {
+   "scene": "street",
+   "codec": "left, planes",
+   "level": 6,
+   "bytes": 15044,
+   "ms": 6.62
+  },
+  {
+   "scene": "street",
+   "codec": "left, interleaved",
+   "level": 1,
+   "bytes": 28595,
+   "ms": 2.3
+  },
+  {
+   "scene": "street",
+   "codec": "left, interleaved",
+   "level": 3,
+   "bytes": 22326,
+   "ms": 2.95
+  },
+  {
+   "scene": "street",
+   "codec": "left, interleaved",
+   "level": 6,
+   "bytes": 14979,
+   "ms": 6.94
+  },
+  {
+   "scene": "street",
+   "codec": "2nd-order, planes",
+   "level": 1,
+   "bytes": 28393,
+   "ms": 2.4
+  },
+  {
+   "scene": "street",
+   "codec": "2nd-order, planes",
+   "level": 3,
+   "bytes": 22430,
+   "ms": 2.82
+  },
+  {
+   "scene": "street",
+   "codec": "2nd-order, planes",
+   "level": 6,
+   "bytes": 16562,
+   "ms": 6.82
+  },
+  {
+   "scene": "street",
+   "codec": "2nd-order, interleaved",
+   "level": 1,
+   "bytes": 32691,
+   "ms": 2.42
+  },
+  {
+   "scene": "street",
+   "codec": "2nd-order, interleaved",
+   "level": 3,
+   "bytes": 24450,
+   "ms": 3.06
+  },
+  {
+   "scene": "street",
+   "codec": "2nd-order, interleaved",
+   "level": 6,
+   "bytes": 17254,
+   "ms": 7.75
+  },
+  {
+   "scene": "street",
+   "codec": "planar L+U-UL, planes",
+   "level": 1,
+   "bytes": 20607,
+   "ms": 1.9
+  },
+  {
+   "scene": "street",
+   "codec": "planar L+U-UL, planes",
+   "level": 3,
+   "bytes": 18127,
+   "ms": 2.24
+  },
+  {
+   "scene": "street",
+   "codec": "planar L+U-UL, planes",
+   "level": 6,
+   "bytes": 13996,
+   "ms": 6.19
+  },
+  {
+   "scene": "street",
+   "codec": "planar L+U-UL, interleaved",
+   "level": 1,
+   "bytes": 22747,
+   "ms": 2.04
+  },
+  {
+   "scene": "street",
+   "codec": "planar L+U-UL, interleaved",
+   "level": 3,
+   "bytes": 19860,
+   "ms": 2.41
+  },
+  {
+   "scene": "street",
+   "codec": "planar L+U-UL, interleaved",
+   "level": 6,
+   "bytes": 14951,
+   "ms": 6.34
+  },
+  {
+   "scene": "street",
+   "codec": "MED (JPEG-LS), planes",
+   "level": 1,
+   "bytes": 18874,
+   "ms": 1.92
+  },
+  {
+   "scene": "street",
+   "codec": "MED (JPEG-LS), planes",
+   "level": 3,
+   "bytes": 16628,
+   "ms": 2.2
+  },
+  {
+   "scene": "street",
+   "codec": "MED (JPEG-LS), planes",
+   "level": 6,
+   "bytes": 12489,
+   "ms": 5.87
+  },
+  {
+   "scene": "street",
+   "codec": "MED (JPEG-LS), interleaved",
+   "level": 1,
+   "bytes": 20221,
+   "ms": 1.93
+  },
+  {
+   "scene": "street",
+   "codec": "MED (JPEG-LS), interleaved",
+   "level": 3,
+   "bytes": 17840,
+   "ms": 2.17
+  },
+  {
+   "scene": "street",
+   "codec": "MED (JPEG-LS), interleaved",
+   "level": 6,
+   "bytes": 13021,
+   "ms": 5.74
+  }
+ ],
+ "texels": 252672
+}

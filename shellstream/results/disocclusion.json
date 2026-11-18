@@ -1,0 +1,62 @@
+[
+ {
+  "scene": "plaza",
+  "offset": "strafe 0.5m",
+  "disoccluded_fraction": 0.201,
+  "stale": 11.0,
+  "rot": 11.0,
+  "naive": 13.02,
+  "noback": 10.53,
+  "shell": 15.54
+ },
+ {
+  "scene": "plaza",
+  "offset": "strafe 0.5m + yaw 10deg",
+  "disoccluded_fraction": 0.1744,
+  "stale": 11.6,
+  "rot": 11.0,
+  "naive": 13.09,
+  "noback": 10.55,
+  "shell": 15.3
+ },
+ {
+  "scene": "pillars",
+  "offset": "strafe 0.5m",
+  "disoccluded_fraction": 0.0365,
+  "stale": 11.68,
+  "rot": 11.68,
+  "naive": 12.83,
+  "noback": 9.92,
+  "shell": 13.9
+ },
+ {
+  "scene": "pillars",
+  "offset": "strafe 0.5m + yaw 10deg",
+  "disoccluded_fraction": 0.033,
+  "stale": 11.16,
+  "rot": 11.51,
+  "naive": 12.45,
+  "noback": 9.61,
+  "shell": 13.65
+ },
+ {
+  "scene": "street",
+  "offset": "strafe 0.5m",
+  "disoccluded_fraction": 0.0139,
+  "stale": 8.58,
+  "rot": 8.58,
+  "naive": 12.57,
+  "noback": 9.04,
+  "shell": 18.86
+ },
+ {
+  "scene": "street",
+  "offset": "strafe 0.5m + yaw 10deg",
+  "disoccluded_fraction": 0.0109,
+  "stale": 10.01,
+  "rot": 8.72,
+  "naive": 12.58,
+  "noback": 9.0,
+  "shell": 18.56
+ }
+]

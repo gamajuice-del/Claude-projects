@@ -1,0 +1,14 @@
+{
+ "classic": {
+  "jpeg_q85_bytes_per_frame": 60995,
+  "x264_crf20_bytes_per_frame": 14745,
+  "ratio": 4.14
+ },
+ "shell_focus": {
+  "jpeg_q85_bytes_per_frame": 61494,
+  "x264_crf20_bytes_per_frame": 15226,
+  "ratio": 4.04
+ },
+ "frames": 48,
+ "size": "640x400"
+}

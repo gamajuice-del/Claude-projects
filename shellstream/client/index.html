@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShellStream</title>
+<style>
+  :root { --fg: #e8f4ff; --dim: #8aa0b8; --accent: #4fd8ff; --bg: #05070d; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden;
+               font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #hud { position: fixed; left: 10px; top: 8px; white-space: pre; pointer-events: none;
+         text-shadow: 0 1px 2px #000; color: var(--fg); }
+  #hud b { color: var(--accent); font-weight: 600; }
+  #score { position: fixed; right: 14px; top: 8px; font-size: 20px; text-shadow: 0 1px 3px #000; pointer-events: none; }
+  #cross { position: fixed; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none; }
+  #cross:before, #cross:after { content: ""; position: absolute; background: rgba(255,255,255,.85); }
+  #cross:before { left: 6px; top: 0; width: 2px; height: 14px; }
+  #cross:after { top: 6px; left: 0; height: 2px; width: 14px; }
+  #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+           background: rgba(3,5,10,.72); cursor: pointer; }
+  #start div { max-width: 560px; padding: 24px 28px; border: 1px solid #23415c; border-radius: 10px; background: #0a1220; }
+  #start h1 { margin: 0 0 8px; font-size: 22px; color: var(--accent); letter-spacing: .5px; }
+  #start p { margin: 6px 0; color: var(--dim); }
+  #start kbd { color: var(--fg); border: 1px solid #355; border-radius: 3px; padding: 0 4px; }
+  @media (max-width: 600px) { #hud { font-size: 11px; } #start div { margin: 0 16px; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="cross"></div>
+<div id="hud"></div>
+<div id="score"></div>
+<div id="start"><div>
+  <h1>ShellStream</h1>
+  <p>Rendered in the cloud, steered locally. The cloud GPUs stream a depth-carrying <i>shell</i> of the world; your
+     browser re-projects it at your display's refresh rate, so looking and moving never wait for the network.</p>
+  <p><kbd>Click</kbd> to play &middot; <kbd>WASD</kbd> move &middot; <kbd>Mouse</kbd> look &middot; <kbd>Space</kbd> jump &middot; <kbd>Shift</kbd> sprint</p>
+  <p>Modes: <kbd>1</kbd> shell (ours) &middot; <kbd>2</kbd> classic streaming &middot; <kbd>3</kbd> rotation-only warp &middot; <kbd>4</kbd> shell w/o background layer &middot; <kbd>H</kbd> HUD</p>
+  <p>Collect the glowing orbs. Their light is rendered in the cloud; the orbs themselves are drawn locally.</p>
+</div></div>
+<script src="client.js"></script>
+</body>
+</html>

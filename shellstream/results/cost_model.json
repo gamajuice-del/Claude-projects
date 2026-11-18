@@ -1,0 +1,80 @@
+{
+ "sass_instructions": {
+  "ss_brick": 496,
+  "ss_fill": 272,
+  "ss_mapbench": 400,
+  "ss_conn": 408,
+  "ss_render": 17608
+ },
+ "map_instructions": 388,
+ "passes": {
+  "front_color": {
+   "pixels": 1024000,
+   "evals": 138286061,
+   "cpu_ms": 7648.939945000166,
+   "evals_per_px": 135.0449814453125
+  },
+  "front_geometry": {
+   "pixels": 256000,
+   "evals": 6468149,
+   "cpu_ms": 346.5472249999948,
+   "evals_per_px": 25.26620703125
+  },
+  "background_band": {
+   "pixels": 256000,
+   "evals": 11276072,
+   "cpu_ms": 726.0565749993475,
+   "evals_per_px": 44.04715625
+  },
+  "omni_color": {
+   "pixels": 393216,
+   "evals": 20104625,
+   "cpu_ms": 1114.808608000203,
+   "evals_per_px": 51.12870534261068
+  },
+  "omni_geometry": {
+   "pixels": 98304,
+   "evals": 1996139,
+   "cpu_ms": 113.55443299999024,
+   "evals_per_px": 20.305775960286457
+  },
+  "classic_1080p": {
+   "pixels": 2073600,
+   "evals": 302351448,
+   "cpu_ms": 16972.77552200012,
+   "evals_per_px": 145.80991898148147
+  }
+ },
+ "t4_ms": {
+  "1.25GHz_simt0.45": {
+   "front_color": 22.85,
+   "front_geometry": 1.07,
+   "background_band": 1.86,
+   "omni_color": 3.32,
+   "omni_geometry": 0.33,
+   "classic_1080p": 49.97,
+   "shell_total_1gpu": 29.43,
+   "shell_total_2gpu_balanced": 14.71
+  },
+  "1.35GHz_simt0.55": {
+   "front_color": 17.31,
+   "front_geometry": 0.81,
+   "background_band": 1.41,
+   "omni_color": 2.52,
+   "omni_geometry": 0.25,
+   "classic_1080p": 37.85,
+   "shell_total_1gpu": 22.3,
+   "shell_total_2gpu_balanced": 11.15
+  },
+  "1.45GHz_simt0.7": {
+   "front_color": 12.66,
+   "front_geometry": 0.59,
+   "background_band": 1.03,
+   "omni_color": 1.84,
+   "omni_geometry": 0.18,
+   "classic_1080p": 27.69,
+   "shell_total_1gpu": 16.3,
+   "shell_total_2gpu_balanced": 8.15
+  }
+ }
+}
