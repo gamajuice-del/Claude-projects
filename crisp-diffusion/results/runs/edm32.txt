@@ -1,0 +1,15 @@
+{"config": {"name": "edm32", "res": 32, "rb": false, "scaffold": false, "ia": false, "budget": 450000000000000.0, "evals": 12, "batch": 64, "lr": 0.0003, "base": 64, "ema": 0.999, "seed": 0, "threads": 4}, "sigma_data": 0.5031378865242004, "params": 6325059, "train_flops_per_sample": 7384858624.0, "aux_flops": 0.0}
+step 0 flops 0.000e+00 test 1.0089 bins [0.9986, 1.0002, 0.9948, 1.0264, 1.0726] t 11s
+step 80 flops 3.781e+13 test 0.8178 bins [1.1202, 1.0048, 0.7768, 0.5961, 0.6965] t 188s
+step 159 flops 7.515e+13 test 0.5424 bins [0.9598, 0.6952, 0.4446, 0.3647, 0.6069] t 355s
+step 239 flops 1.130e+14 test 0.3524 bins [0.7409, 0.3813, 0.2562, 0.291, 0.5705] t 538s
+step 318 flops 1.503e+14 test 0.3121 bins [0.6653, 0.3389, 0.2249, 0.2532, 0.5163] t 713s
+step 397 flops 1.876e+14 test 0.2902 bins [0.6275, 0.3186, 0.2072, 0.2312, 0.4816] t 884s
+step 477 flops 2.254e+14 test 0.2741 bins [0.5969, 0.3024, 0.1928, 0.2193, 0.4571] t 1056s
+step 556 flops 2.628e+14 test 0.2625 bins [0.575, 0.29, 0.1828, 0.21, 0.4428] t 1219s
+step 635 flops 3.001e+14 test 0.2546 bins [0.5596, 0.2808, 0.1763, 0.2041, 0.4323] t 1369s
+step 715 flops 3.379e+14 test 0.2479 bins [0.5457, 0.2729, 0.171, 0.1989, 0.4261] t 1520s
+step 794 flops 3.753e+14 test 0.2426 bins [0.5344, 0.2665, 0.1667, 0.1949, 0.4217] t 1664s
+step 873 flops 4.126e+14 test 0.2380 bins [0.5234, 0.2611, 0.1632, 0.1913, 0.417] t 1820s
+step 953 flops 4.504e+14 test 0.2340 bins [0.5148, 0.2565, 0.1603, 0.1887, 0.4099] t 1984s
+done /home/user/Claude-projects/crisp-diffusion/results/runs/edm32

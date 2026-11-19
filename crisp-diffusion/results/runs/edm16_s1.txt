@@ -1,0 +1,9 @@
+{"config": {"name": "edm16_s1", "res": 16, "rb": false, "scaffold": false, "ia": false, "budget": 75000000000000.0, "evals": 6, "batch": 64, "lr": 0.0003, "base": 64, "ema": 0.999, "seed": 1, "threads": 4}, "sigma_data": 0.9721055626869202, "params": 6325059, "train_flops_per_sample": 1849655296.0, "aux_flops": 0.0}
+step 0 flops 0.000e+00 test 1.0060 bins [1.0063, 0.9973, 0.999, 1.0133, 1.0559] t 2s
+step 106 flops 1.255e+13 test 0.8495 bins [1.0505, 0.9742, 0.839, 0.6826, 0.7448] t 56s
+step 212 flops 2.510e+13 test 0.4976 bins [0.9144, 0.6022, 0.4143, 0.352, 0.5818] t 106s
+step 317 flops 3.753e+13 test 0.4398 bins [0.8625, 0.547, 0.3615, 0.3005, 0.4573] t 154s
+step 423 flops 5.007e+13 test 0.4115 bins [0.8286, 0.5172, 0.3348, 0.2757, 0.4204] t 201s
+step 528 flops 6.250e+13 test 0.3948 bins [0.8088, 0.499, 0.3178, 0.2598, 0.4115] t 245s
+step 634 flops 7.505e+13 test 0.3823 bins [0.7906, 0.4854, 0.3064, 0.2489, 0.3978] t 294s
+done /home/user/Claude-projects/crisp-diffusion/results/runs/edm16_s1

@@ -1,0 +1,6 @@
+epoch 0 test acc 0.5272 t 177s
+epoch 1 test acc 0.6477 t 342s
+epoch 2 test acc 0.7715 t 522s
+epoch 3 test acc 0.7942 t 705s
+epoch 4 test acc 0.8463 t 890s
+epoch 5 test acc 0.8746 t 1053s

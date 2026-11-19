@@ -21,30 +21,36 @@ Every claim in this document carries one of four tags:
    Two T4s (32 GB in total, no bf16, PCIe interconnect) cannot even hold the optimizer state of an
    8–12 B-parameter frontier model. Whatever the algorithm, the 100,000× end is ruled out on this hardware. **[D]** for the
    memory floor; **[P]** for the rest.
-2. **The useful version of the goal, an SD-1.5-class 512² text-to-image model trained from scratch on 2×T4, is
-   projected to be reachable in about 2–3 weeks** (≈5·10¹⁹ FLOPs, every component counted, no pretrained
-   parts). That is **≈200× fewer useful FLOPs** than SD-1.x's U-Net + CLIP stack (≈1·10²² FLOPs), or ≈1,400× by
-   the A100-hour accounting on the SD model card. **[P]** The 1,000× target holds only under the second
-   accounting. Most of the factor comes from levers already known to the field (fewer tokens, curated data, sparse
-   compute). The new mechanisms below add a further projected 3–10×.
+2. **The useful version of the goal, an SD-1.5-class 512² text-to-image model trained entirely from scratch on 2×T4, is
+   projected at 16–117 days (central ≈50 days, ≈1.6·10²⁰ FLOPs)** with every component counted and no pretrained
+   parts. That is ≈26–190× fewer useful FLOPs than SD-1.x's U-Net + CLIP stack (central ≈60×), or ≈200–1,500× by the
+   A100-hour accounting on the SD model card. **[P]** The 1,000× target is met only in the optimistic scenario and only
+   under the wall-clock accounting. **Almost all of this factor comes from levers already known to the field**: fewer, better
+   samples; a transformer that sees only a 32×32×3 coarse band; masking; and a small text encoder that costs prompt
+   fidelity.
 3. **What is new** (to my knowledge; see §9):
    - **Theorem 1 (information ledger).** The only information a denoiser must learn beyond one pass of
      second-order statistics is $D(p\,\|\,\mathcal N(\mu,\Sigma)) = \tfrac12\int_0^\infty
      [\mathrm{lmmse}(s)-\mathrm{mmse}(s)]\,ds$. Its density over noise levels, $\mathrm{gap}(\sigma)/\sigma^2$,
-     says where training compute can do any good. **[D]**
+     says where training compute can do any good. **[D]** Measured on CIFAR **[E]**, ≈0 learnable information lies above σ = 5,
+     and EDM networks are still worse than the free closed-form scaffold there after 4.5·10¹⁴ FLOPs.
    - **Theorem 3 (NMCR).** For random-Fourier-feature local denoisers, the normal equations integrated *exactly*
      over the Gaussian noise are elementwise products of noise-independent data statistics with closed-form
      σ-kernels. One pass over clean data therefore trains the field at **every noise level at once**: no noise
      sampling, no noise-level sampling, no backprop, no epochs. **[D]**, and checked against Monte Carlo to 10⁻⁴–3·10⁻³ relative error **[E]**.
    - **Proposition 2 (where label noise lives).** Rao-Blackwellized targets leave the expected gradient
      unchanged **[D]**. But in high dimension the empirical posterior is one-hot for every σ below roughly the
-     nearest-neighbour scale, so RB targets equal standard targets exactly where most training happens (σ ≲ 2
-     on CIFAR). That falsifies the hope that RB alone gives a large speed-up. **[E]**
-   - **The CRISP training framework:** a coarse-only learned model that is a residual over a closed-form scaffold,
-     a scale pyramid whose finest fields are fitted in closed form, and noise-level allocation driven by the
-     ledger.
-4. **The proof of concept (§7)** separates what worked from what did not, at matched FLOPs, against an
-   EDM baseline. The numbers are small-scale and CPU-bound. They show mechanisms, not a 1,000× result.
+     nearest-neighbour scale, so RB targets equal standard targets exactly where most training happens. **[E]**
+4. **The proof of concept (§7) mostly falsified the hope of a large multiplicative factor**, and I report it that way:
+   - The scaffold gives a **head start, not a lasting speed-up**: ≈2× fewer FLOPs early, 1.4× at 1.5·10¹⁴, and equal held-out loss
+     by 4.5·10¹⁴. It does give lasting gains at high noise, and noticeably better class adherence of samples at equal FLOPs
+     (classifier accuracy 0.34 vs 0.29).
+   - RB targets: **no effect** (as Proposition 2 predicts). Information-allocated σ: ≈0.5%.
+   - Pyramid with closed-form fine fields **lost** end-to-end to a standard pixel-space EDM at matched FLOPs on CIFAR-10 32×32
+     (self-trained-feature FID 12.5 vs 7.6). The diagnostic: at 32×32 the finest Haar band carries semantic content
+     (removing it from *real* images drops classifier accuracy from 0.90 to 0.30), so locality fails there. The 512² claim is untested.
+   - NMCR is exact and cheap (97 s for all 18 σ) and beats an SGD U-Net of equal FLOPs at low noise. It loses at high noise and to a U-Net
+     with 5× the FLOPs, and is barely better than a *linear* local field. Its limit is expressivity, not optimization.
 
 ---
 
@@ -58,10 +64,10 @@ Every claim in this document carries one of four tags:
 | SD-1.x U-Net, useful FLOPs | ≈ 6.7·10²¹ | 237k steps at 256² + 1.30M steps at 512², batch 2048, ≈0.8 TFLOP/forward at 512² (×3 for training) |
 | CLIP ViT-L/14 (SD-1.x text encoder) | ≈ 3.3·10²¹ | 12.8 B samples × 3 × ≈87 GFLOP |
 | SD-1.x stack, useful FLOPs | **≈ 1·10²²** | VAE excluded (small) |
-| SD-1.x by wall-clock | ≈ 6.7·10²² | 150k A100-hours (model card) at 40% MFU, plus CLIP's 73.7k V100-hours |
+| SD-1.x by wall-clock | ≈ 7.9·10²² | 150k A100-hours (model card) at 40% MFU ≈ 6.7·10²², plus CLIP's 73.7k V100-hours at 35% ≈ 1.2·10²² |
 | Frontier (8–12 B-parameter image models) | ≳ 10²³–10²⁴ | not public; order of magnitude only |
 
-"1,000× vs SD-1.x" therefore means 10¹⁹ (strict) to 7·10¹⁹ (wall-clock) FLOPs, or 3–20 days on 2×T4.
+"1,000× vs SD-1.x" therefore means 10¹⁹ (strict) to 8·10¹⁹ (wall-clock) FLOPs, or 3–23 days on 2×T4.
 "100,000× vs frontier" means ~10¹⁹ FLOPs while matching a model with ≳10 B parameters.
 
 ---
@@ -111,8 +117,11 @@ $ds=2s\,d\ln(1/\sigma)$ gives the second form. ∎
   ρ ≈ 0 carry no information a network can extract. Spending SGD samples there is pure overhead. **[D]**
 * For 8-bit data the true density is discrete and $D(p\|G)=\infty$. The integral restricted to $\sigma\ge\sigma_{\min}$ is finite
   and is the non-Gaussian information resolvable above the quantization scale.
-* A trained network gives an *upper* bound on mmse, so $\tfrac12\int(\mathrm{lmmse}-\mathrm{mse}_\theta)\,ds$ is a *lower* bound
-  on how many nats per image the network has actually captured, resolved by noise band. §7 reports it.
+* A trained network's error upper-bounds mmse, so $\tfrac12\int(\mathrm{lmmse}-\mathrm{mse}_\theta)\,ds\le D(p\|G)$. By Verdú's
+  mismatched-estimation identity (Verdú 2010), if $D_\theta$ were the exact posterior-mean denoiser of a model density
+  $q_\theta$, this quantity would equal $D(p\|G)-D(p\|q_\theta)$: the number of nats by which the model is closer to the data than the
+  free Gaussian scaffold. For a real network the identity holds only approximately. §7 reports this "captured non-Gaussian information"
+  per noise band (E6).
 
 ### 2.3 Where the label noise of denoising score matching lives  [D] + [E]
 
@@ -130,7 +139,7 @@ $\sigma^2$ is small relative to the gap between the squared distances from $x_\s
 images.
 
 Part (a) is exact (proof in A.2). Part (b) is the catch, and §7 / `results/analytic.json` measures it **[E]**. On CIFAR-10 pixels
-(d = 3072, 5k images per class) the posterior's effective sample size is exactly 1.0 for every σ ≤ 2,
+(d = 3072, 5k images per class) the posterior's effective sample size is 1.0 (to one decimal) for every σ ≤ 2,
 and $V(\sigma)\le 0.12\%$ of the residual energy there. Label noise becomes noticeable at σ = 3 (3.4% of the residual)
 and dominates from σ = 10. EDM's training distribution (log-normal, median σ = 0.3) puts ≈94% of its samples at σ ≤ 2,
 where RB targets *equal* the standard ones, and ≈97% at σ ≤ 3.
@@ -185,7 +194,10 @@ unnecessary and gives a far better skip connection than EDM's $c_\text{skip}x$ (
 trained scores are close to the Gaussian score at moderate and high noise, and use this to skip 15–30% of *sampling*
 steps. They do not use it to remove *training*. Falsification **[E]**: at σ = 20 the class-conditional scaffold's test MSE is
 608.78 against 608.55 for the exact empirical posterior (0.04% apart). At σ = 1 it beats EDM's skip term 5×
-(121 vs 613). **Accepted.**
+(121 vs 613). E4/E6 **[E]**: as a skip path in training it gives a head start (held-out loss 0.42 at step 0 vs 1.01) that is worth
+a fixed ≈4·10¹³ FLOPs and has vanished by 4.5·10¹⁴. At σ ≥ 10 it stays far better than a trained EDM network (σ = 20: 549 vs 642 per
+image), and samples from the scaffold-based model follow the class better (accuracy 0.34 vs 0.29). It is slightly *worse* at σ < 0.05,
+where shrinkage based on estimated small eigenvalues hurts. **Accepted, as a head start and high-noise solver, not a multiplicative speed-up.**
 
 **H3. Rao-Blackwellized (posterior-mean) targets.**
 Mechanism: Proposition 2. Scalable estimator: exact head over k approximate nearest neighbours (IVF index on a
@@ -193,8 +205,9 @@ PCA sketch) plus a uniformly sampled tail with importance weight (N−k)/s. Cost
 about 10⁻⁴ of a network forward at scale. Gain: in theory, deterministic-rate SGD wherever the posterior is spread.
 Prior: Stable Target Field (Xu, Tong & Jaakkola, ICLR 2023) uses a reference batch, which has larger bias. Falsification
 **[E]**: label noise is zero for σ ≤ 2 on CIFAR (§2.3). At σ ≥ 5 the stratified estimator cuts it 20–250× (σ = 10:
-455 → 15; σ = 80: 700 → 2.7). **Partially falsified:** real but confined to high noise. Retained only because it is what makes
-H4 work (below).
+455 → 15; σ = 80: 700 → 2.7). In training (E4), +R alone gives 0.3551 vs EDM's 0.3557 at 1.5·10¹⁴ FLOPs, and +C+I without R
+equals full CRISP (0.3454 vs 0.3452). My claim that I needs R was falsified too. **Falsified as a speed-up at this scale:** the variance
+it removes sits where the scaffold has already solved the problem.
 *H3′ (open):* targets from a generalizing *local* posterior (patch mosaics), annealed to unbiased targets. **[S]**
 
 **H4. Information-allocated noise-level sampling.**
@@ -202,8 +215,9 @@ Mechanism: Theorem 1 says where learning can happen. Sample σ from $q\propto p\
 variance-optimal importance-sampling proposal (A.4), with weights $p/q$ so the objective is unchanged. With *standard* targets, ℓ at high σ is dominated by
 irreducible mmse, so this proposal (as in iDDPM) allocates *more* samples to high noise, which is the wrong direction. With
 scaffold + RB targets, ℓ becomes the excess loss, so the proposal learns to skip what is already solved. Cost: negligible. Gain: bounded by the
-mass p puts on ρ ≈ 0, so ≤1.2× for EDM-CIFAR and up to ~2× for schedules shifted toward high noise. **Accepted as a small,
-principled factor.** §7 tests it.
+mass p puts on ρ ≈ 0, so ≤1.2× for EDM-CIFAR and up to ~2× for schedules shifted toward high noise. Measured **[E]**: +C+I 0.3454 vs
++C 0.3470 at 1.5·10¹⁴ (≈0.5%). The learned proposal moved samples toward *low* σ (q/p up to 2.5) and away from σ ≈ 0.4–1.5 (q/p ≈ 0.7).
+**Weak; keep only for schedules with heavy high-noise mass.**
 
 **H5. Multiscale factorization with local conditionals (scale pyramid).**
 Mechanism: for an orthonormal wavelet transform, $p(x)=p(x^{(J)})\prod_j p(d^{(j)}\mid x^{(j)})$. The chain rule makes this exact,
@@ -213,8 +227,11 @@ O(pixels). Gain: 16–256× fewer positions in the expensive model, and fine fie
 preserved *if* locality holds; it fails for long-range fine structure such as text glyphs and symmetric faces, which intermediate scales must handle
 with larger receptive fields. Prior: Kadkhodaie, Guth, Mallat & Simoncelli (ICLR 2023) show
 face structure is captured with much smaller conditioning neighbourhoods than a pixel-domain Markov model needs.
-Guth et al. (NeurIPS 2022) show a constant number of sampling steps per scale. **Accepted. This is the main structural
-lever.**
+Guth et al. (NeurIPS 2022) show a constant number of sampling steps per scale. Falsification **[E]** at 32×32 (one level):
+the pyramid lost end-to-end to pixel-space EDM at matched FLOPs (SC-FID 12.5 vs 7.6). Real images with the finest band zeroed reach
+only 0.30 classifier accuracy (vs 0.90), so at this resolution the finest band is semantic, not texture, and the local Markov
+assumption fails. **Unresolved at the resolutions where it matters (256²→512²); falsified for 32² CIFAR.** It remains the only
+lever here that removes *dimensions* from the expensive model, and therefore the first thing Stage A of §8 must test.
 
 **H6. Noise-marginalized closed-form regression (NMCR) for local fields.**
 Mechanism: Theorem 3 (§4.5). Cost: $N_p(d_\text{in}+m)^2$ once, plus one $(d_\text{in}+m)^3$ solve per σ. Gain over SGD
@@ -223,7 +240,10 @@ form. In absolute terms fine fields become ≈10¹⁶ FLOPs at 512². Ability: l
 expressivity in 100–200 input dimensions. Limits: only the first layer of a deep net can be noise-marginalized, so the method
 **requires locality (H5)** to keep input dimension low. Prior: random features (Rahimi & Recht 2007); kernel denoisers.
 I know of no prior use of σ-independent sufficient statistics that train all noise levels at once. Falsification: E3 (§7)
-compares against SGD-trained CNNs at 1× and 5× the FLOPs. **Accepted for fine scales, see §7.**
+compares against SGD-trained U-Nets at 1× and 5× the FLOPs **[E]**. NMCR wins at low noise against 1× (σ = 0.15: 0.00363 vs 0.00439) and loses at
+σ ≥ 0.25. It loses everywhere to 5×, and is only 1–4% better than a *linear* local field. Its details still improve generated samples a lot
+(SC-FID 18.1 → 12.5 vs zeroed details). **Accepted as exact, cheap machinery; its expressivity (5×5 context, random features in 166
+dimensions) is the bottleneck.** Fix to try: larger linear context plus learned (not random) low-dimensional features.
 
 **H7. Backprop-free learning (forward-forward, feedback alignment, predictive coding, NoProp).**
 Ceiling: the backward pass is ≈2/3 of step FLOPs, so per-step savings are ≤3× **[D]**. Bio-plausible rules scale poorly
@@ -266,11 +286,11 @@ modest returns. **Open; low priority.**
 | # | Idea | Verdict | Expected factor at scale |
 |---|---|---|---|
 | H1 | empirical-Bayes closed form | rejected (memorizes) | — |
-| H2 | Gaussian / spectral scaffold | **accepted** | 1.2–2× (with H4) |
-| H3 | RB targets | partially falsified | ~1× alone; enables H4 |
-| H4 | information-allocated σ | **accepted** | 1.1–2× |
-| H5 | scale pyramid with local fields | **accepted** | 4–16× vs f8 latents |
-| H6 | NMCR closed-form fields | **accepted (fine scales)** | fine-scale training → ~0 |
+| H2 | Gaussian / spectral scaffold | **accepted** (head start + high-noise solver) | fixed offset ≈4·10¹³ FLOPs at PoC scale; better class adherence [E] |
+| H3 | RB targets | **falsified** at this scale | 1.00× [E] |
+| H4 | information-allocated σ | weak | ≈1.005× [E] |
+| H5 | scale pyramid with local fields | falsified at 32²; open at 512² | 4–16× fewer positions *if* locality holds [P] |
+| H6 | NMCR closed-form fields | machinery accepted, expressivity insufficient | fine-scale training → ~0 FLOPs [D] |
 | H7 | backprop-free | rejected | ≤3× ceiling, worse in practice |
 | H8 | NTK / analytic deep weights | rejected | — |
 | H9 | data hygiene | accepted (known) | ≤2× |
@@ -319,6 +339,9 @@ denoiser**.
 
 ### 4.3 Pillar R: Rao-Blackwellized targets (stratified posterior)
 
+*Status after the proof of concept: no measurable benefit (§7, E4). Kept in the codebase and described here because the
+negative result is informative; it is dropped from the costed configuration in §5.*
+
 For a training pair $(x_0^{(i)},c_i)$ and noisy $x_\sigma$:
 1. $q=P^\top(x_\sigma-\bar x)$ (PCA sketch, r = 64–256). IVF lookup gives a head $K$ of k approximate nearest neighbours of $q$
    within the same class or caption cluster. Always add $i$ itself.
@@ -334,6 +357,8 @@ are almost all unique, so the exact empirical conditional posterior is one-hot. 
 
 ### 4.4 Pillar I: information-allocated noise levels
 
+*Status: ≈0.5% effect at the scale tested (§7, E4). Optional.*
+
 Twenty-four bins in ln σ. Each bin keeps an EMA of $\ell^2$, where ℓ is the λ-weighted per-sample loss against the RB target. The proposal is
 $q(\sigma)\propto p(\sigma)\,[(1-\phi)\,r(\sigma)/\bar r+\phi]$ with $r=\sqrt{\mathrm{EMA}(\ell^2)}$ and floor φ = 0.2. Each sample's loss
 is weighted by $p/q=\bar r/r$. Because ℓ is the *excess* loss (Prop. 2), r(σ) tracks the remaining learnable information
@@ -345,6 +370,9 @@ is weighted by $p/q=\bar r/r$. Because ℓ is the *excess* loss (Prop. 2), r(σ)
 coarser band and a pooled text embedding, has a receptive field of about 32–64 coefficients, and trains with EDM on random crops.
 Patch-level data is plentiful and the conditional problem is well conditioned, so they converge with few image-level passes
 (Guth et al. 2022).
+
+*Status: at 32² the closed-form fine field was too weak (§7, E3/E5). At 512² the finest bands are far more local, but that is untested.
+The fallback is a small learned local conv field per fine level, ≈5·10¹⁸ FLOPs in total, which keeps the §5 totals within their range.*
 
 **Fine levels (256², 512²): NMCR.** At site $u$ the local field predicts the clean detail vector $y=d_0[u]\in\mathbb R^{9}$ from
 $z_\sigma=[\text{noisy }3{\times}3\text{ detail patch};\ \text{clean }5{\times}5\text{ coarse patch};\ \text{text or class code}]$,
@@ -429,6 +457,72 @@ reverse diffusion on that level's detail band (mid: learned field, fine: NMCR wi
 σ grid), followed by an inverse Haar step. Inference at 512² ≈ 7·10¹² FLOPs (coarse) + ≈9·10¹² FLOPs (NMCR fine
 levels) + ≈4·10¹² (mid), about 1 s per image on one T4.
 
+### 4.10 Minimal PyTorch reference (the two core mechanisms)
+
+The runnable, tested versions are `crisp/edm.py`, `crisp/rb.py`, `crisp/scaffold.py` and `crisp/nmcr.py`. Stripped to the essentials:
+
+```python
+import math, torch
+
+# ---- Pillar C + R + I: one CRISP training step for the coarse model ----------------------------
+def crisp_step(net, opt, x0, y, idx, scaffold, rb, sampler, sd):
+    sigma, w = sampler.sample(x0.shape[0])                    # info-allocated sigma, weights p/q
+    s = sigma.view(-1, 1, 1, 1)
+    xt = x0 + s * torch.randn_like(x0)
+    with torch.no_grad():
+        target, _ = rb(xt, sigma, idx, y)                     # Rao-Blackwellized posterior mean
+        base = scaffold(xt, sigma, y)                         # closed-form LMMSE: D_G(x_t, sigma, y)
+    c_in, c_out = 1 / torch.sqrt(s**2 + sd**2), s * sd / torch.sqrt(s**2 + sd**2)
+    D = base + c_out * net(torch.cat([c_in * xt, base / sd], 1), torch.log(sigma) / 4, y)
+    lam = (sigma**2 + sd**2) / (sigma * sd)**2                # EDM weight: objective unchanged
+    per = lam * ((D - target)**2).mean((1, 2, 3))             # ≈ excess loss (label noise removed)
+    opt.zero_grad(); (w * per).mean().backward(); opt.step()
+    sampler.update(sigma, per.detach())                       # r(sigma) <- sqrt(EMA(l^2)) per bin
+
+# ---- Pillar SP: NMCR, train a local denoiser for ALL sigmas from ONE pass over clean patches -----
+def nmcr_fit(z0, y, W, b, n_noisy, sigmas, ridge=1e-5):
+    """z0: (N, d) clean inputs (noisy coords first); y: (N, o) clean targets; W: (m, d); b: (m,)."""
+    N, d = z0.shape; m = W.shape[0]
+    A = z0 @ W.T + b; C, S = torch.cos(A), torch.sin(A)
+    L = torch.cat([z0, C], 1)
+    LL, SS, Ly = L.T @ L / N, S.T @ S / N, L.T @ y / N        # sigma-free sufficient statistics
+    Lbar, Sbar, ybar = L.mean(0), S.mean(0), y.mean(0)
+    U = W[:, :n_noisy]; q = (U * U).sum(1); R = U @ U.T
+    MU = torch.zeros(d, m); MU[:n_noisy] = U.T
+    sols = {}
+    for sg in sigmas:                                         # closed-form kernels per sigma
+        s2 = sg * sg; e = torch.exp(-s2 * q / 2); r = math.sqrt(2 / m)
+        Em = torch.exp(-s2 * (q[:, None] + q[None] - 2 * R) / 2)
+        Ep = torch.exp(-s2 * (q[:, None] + q[None] + 2 * R) / 2)
+        CC = LL[d:, d:]
+        G = torch.zeros(1 + d + m, 1 + d + m)
+        G[0, 0] = 1; G[0, 1:d+1] = Lbar[:d]; G[0, d+1:] = r * e * Lbar[d:]
+        G[1:d+1, 1:d+1] = LL[:d, :d] + s2 * torch.diag((torch.arange(d) < n_noisy).float())
+        G[1:d+1, d+1:] = r * (LL[:d, d:] * e - s2 * MU * (e * Sbar))
+        G[d+1:, d+1:] = (Em * (CC + SS) + Ep * (CC - SS)) / m
+        G = torch.triu(G) + torch.triu(G, 1).T
+        B = torch.cat([ybar[None], Ly[:d], r * e[:, None] * Ly[d:]])
+        sols[sg] = torch.linalg.solve(G + ridge * G.diagonal().mean() * torch.eye(len(G)), B)
+    return sols   # predict: [1, z_t, sqrt(2/m) cos(W z_t + b)] @ sols[sigma]
+```
+
+### 4.11 Computational complexity
+
+N = images, $d_c$ = coarse dimension (3,072), $N_p$ = fine-scale patches, m = random features, $|\Sigma|$ = sampler noise levels,
+S = SGD samples, T = tokens, P = parameters.
+
+| Component | Training | Inference (per image) | Depends on #SGD steps? |
+|---|---|---|---|
+| Coarse scaffold (full covariance) | $O(Nd_c^2+d_c^3)$ | $O(d_c^2)$ per NFE | no |
+| Spectral scaffold (any resolution) | $O(Nd\log d)$ | $O(d\log d)$ per NFE | no |
+| RB targets | index $O(Nd_cr)$; per sample $O(n_\text{probe}\tfrac{N}{n_\text{list}}r+(k+s)d_c)$ | — | per sample, ≈10⁻⁴ of a forward pass |
+| Coarse model | $O(S\cdot T\cdot P)$ with T fixed at 256 for **any** output resolution | $O(\text{NFE}\cdot T\cdot P)$ | yes (the dominant cost) |
+| Mid fields | $O(S_\text{mid}\cdot\text{crop}\cdot P_\text{mid})$ | $O(\text{NFE}\cdot\text{pixels}_j\cdot P_\text{mid})$ | yes (small) |
+| NMCR fine fields | $O(N_p(d_\text{in}+m)^2+|\Sigma|(d_\text{in}+m)^3)$, **independent of the number of noise draws, epochs and σ samples** | $O(\text{NFE}\cdot\text{pixels}_j\cdot m\,d_\text{in})$ | no |
+
+Raising the output resolution by 2× adds one fine level. That costs $O(N_p m^2)$ in training (minutes) and nothing in the coarse model.
+In a single-resolution latent model the same change multiplies every SGD step's cost by ≈4×.
+
 ---
 
 ## 5. Cost model on 2×T4: 512² text-to-image, SD-1.5-class target  [P]
@@ -437,30 +531,36 @@ levels) + ≈4·10¹² (mid), about 1 s per image on one T4.
 
 * Data: ≈30M deduplicated image–alt-text pairs from open sets. **No recaptioning by pretrained VLMs, no synthetic
   images from other models, no pretrained encoders of any kind.**
-* Throughput: 20 TFLOP/s sustained per T4 on the transformer (31% of fp16 peak; sensitivity at 12 and 30).
+* Configuration costed: C + SP (+ I). **R is dropped**: it had no measurable effect in §7 (E4), so it is not worth its index.
+* Throughput: 20 TFLOP/s sustained per T4 on the transformer (31% of fp16 peak).
 * Host: 16 CPU cores, 128 GB RAM, 2 TB NVMe.
-* Global-model sample count: **120M** (4 epochs). This is the most uncertain number; the range is 60M–400M. For reference,
-  SD-1.x saw ≈3.2 B samples.
+* **Coarse-model sample count, the dominant uncertainty, gets three scenarios.** The proof of concept (§7) showed that the CRISP
+  training-side mechanisms give a *head start* rather than a lasting multiplicative speed-up. The sample count therefore has to be
+  anchored on conventional evidence: from-scratch diffusion transformers typically need 10⁸–10⁹ samples (DiT-XL/2 on ImageNet:
+  1.8·10⁹ samples for its best FID; masked and representation-aided variants several times fewer). SD-1.x saw ≈3.2·10⁹.
+
+| Scenario | Coarse samples | Basis |
+|---|---|---|
+| Optimistic | 1.2·10⁸ (4 epochs) | holds only if curated data and masking give REPA-like convergence without an external encoder (not demonstrated) |
+| **Central** | **4·10⁸** (13 epochs) | typical of masked DiT training to a good (not best) FID |
+| Conservative | 1·10⁹ | DiT-like convergence |
 
 ### 5.2 FLOPs (everything counted)
 
-| Component | How | FLOPs | 2×T4 days |
-|---|---|---|---|
-| Decode / resize / Haar for 30M images | CPU | ≈2·10¹⁶ (CPU) | 0 GPU (≈2 h on 16 cores) |
-| PPMI-SVD text features | CPU, closed form | ≈10¹⁵ | 0 |
-| Coarse scaffold (conditional moments, eigen) | one pass | ≈7·10¹⁷ | 0.2 |
-| RB index (PCA projection + IVF assignment) | one pass | ≈3·10¹⁷ | 0.1 |
-| **Coarse transformer** 400M × 256 tokens × 120M samples, 50% masking (≈3.5·10¹¹/sample) | SGD | **4.2·10¹⁹** | **12.2** |
-| Text encoder 25M × 64 tokens, joint | SGD | 1.2·10¹⁸ | 0.35 |
-| RB queries (n_probe = 8, k + s = 288) | per sample | ≈1.3·10¹⁵ | ~0 |
-| Mid fields 2 × 30M parameters, 3·10⁷ crops each | SGD | 8.4·10¹⁸ | 2.4 |
-| Fine fields NMCR, m = 8192, 2·10⁷ patches per level | closed form | ≈1.1·10¹⁶ | <0.01 |
-| In-training evaluation | | ≈5·10¹⁷ | 0.15 |
-| Communication and stalls | DDP all-reduce 0.8 GB/step over PCIe (≈0.1 s per 2.2 s step), partly overlapped | +≈7% wall | +1.1 |
-| **Total** | | **≈5.4·10¹⁹** | **≈16.5 days** |
-
-Sensitivity: 60M–400M coarse samples and 12–30 TFLOP/s per GPU give **8 to ≈100 days**. The coarse model is ≈80%
-of the cost, so the uncertainty lives almost entirely in how many samples it needs.
+| Component | How | Optimistic | **Central** | Conservative |
+|---|---|---|---|---|
+| Decode / resize / Haar for 30M images | CPU (≈2 h on 16 cores) | 2·10¹⁶ (CPU) | 2·10¹⁶ (CPU) | 2·10¹⁶ (CPU) |
+| PPMI-SVD text features | CPU, closed form | 10¹⁵ | 10¹⁵ | 10¹⁵ |
+| Coarse scaffold (conditional moments, eigen) | one pass | 7·10¹⁷ | 7·10¹⁷ | 7·10¹⁷ |
+| **Coarse transformer** 400M params, 256 tokens, 50% masked (3.5·10¹¹ FLOPs/sample) | SGD | 4.2·10¹⁹ | **1.4·10²⁰** | 3.5·10²⁰ |
+| Text encoder 25M params × 64 tokens, joint | SGD | 1.2·10¹⁸ | 4·10¹⁸ | 1·10¹⁹ |
+| Mid fields 2 × 30M params | SGD | 8.4·10¹⁸ | 1.7·10¹⁹ | 1.7·10¹⁹ |
+| Fine fields NMCR, m = 8192, 2·10⁷ patches per level | closed form | 10¹⁶ | 10¹⁶ | 10¹⁶ |
+| In-training evaluation | | 5·10¹⁷ | 5·10¹⁷ | 5·10¹⁷ |
+| **Total** | | **5.3·10¹⁹** | **1.6·10²⁰** | **3.8·10²⁰** |
+| 2×T4 wall clock (+7% PCIe all-reduce: 0.8 GB per 2.2 s step, partly overlapped) | | **16 days** | **50 days** | **117 days** |
+| vs SD-1.x useful FLOPs (1·10²²) | | 190× | **62×** | 26× |
+| vs SD-1.x wall-clock accounting (7.9·10²²) | | 1,500× | **490×** | 210× |
 
 ### 5.3 Memory (per T4, 16 GB)
 
@@ -468,28 +568,29 @@ Coarse model, 400M parameters, ZeRO-1 across both GPUs: fp32 master 1.6 GB + fp1
 half of the Adam moments 1.6 = **4.8 GB**. Activations at micro-batch 32 × 128 visible tokens × 24 layers (≈44 B/token/width/layer)
 ≈ **4.4 GB**. Scaffold 3072² fp16 eigenbasis 19 MB. Workspace ≈1 GB. **≈10.2 GB, fits.** Global batch 256 via accumulation.
 Mid fields train on the second GPU in a later phase, or interleaved (≈3 GB each). NMCR Gram matrices: 8365² fp32 = 280 MB,
-accumulated on GPU in fp32 and solved in fp64 on the host. RB index: ≈15 GB host RAM.
+accumulated on GPU in fp32 and solved in fp64 on the host.
 
 ### 5.4 Wall clock and energy
 
-≈16.5 days at 2 × 70 W GPU + ≈150 W host → **≈115 kWh**. SD-1.x: 150k A100-hours × 250 W ≈ 37.5 MWh for the U-Net alone. The model
-card estimates 11,250 kg CO₂-eq. Energy ratio ≈ 300× for the U-Net alone. **[P]**
+Central scenario: 50 days at 2 × 70 W GPU + ≈150 W host → **≈350 kWh** (optimistic ≈115 kWh, conservative ≈810 kWh).
+SD-1.x: 150k A100-hours × 250 W ≈ 37.5 MWh for the U-Net alone (the model card estimates 11,250 kg CO₂-eq). Energy ratio
+≈ 110× (central), against the U-Net alone. **[P]**
 
-### 5.5 Where the factor comes from (vs SD-1.x useful FLOPs ≈ 1·10²²)
+### 5.5 Where the factor comes from (central scenario, vs SD-1.x useful FLOPs ≈ 1·10²²)
 
-| Lever | Known? | Projected factor | Status |
-|---|---|---|---|
-| Fewer samples: 120M curated vs 3.2B | known (data curation; H9) | ≈10× in sample count, partly offset by higher per-sample cost | [P] |
-| Expensive model sees 256 tokens, not a 64² latent U-Net at 0.8 TFLOP/forward | pyramid (H5), new combination | ≈4× per sample (2.1·10¹¹ vs 8·10¹¹ fwd) | [P] |
-| Token masking 50% | known (H10) | ≈1.8× | [E] literature |
-| Text encoder trained jointly at 25M params instead of CLIP-L (3.3·10²¹) | design choice, costs prompt fidelity | ≈3× on the total stack | [P] |
-| Scaffold + information allocation + RB (H2, H4, H3) | **new** | 1.2–2× | [E] small scale (§7) |
-| Fine scales in closed form (H6) instead of training them inside the big model | **new** | removes ≈30–50% of what a single-resolution model spends on detail | [P] |
-| **Product (overlaps discounted)** | | **≈200×** | [P] |
+| Factor | SD-1.x | CRISP (central) | Ratio | Where it comes from | Status |
+|---|---|---|---|---|---|
+| Training FLOPs per sample at 512² | 2.4·10¹² (U-Net, 64² latent) | 3.5·10¹¹ (256 tokens, 50% masked) | ≈7× | ≈4× from the coarse-only expensive model (pyramid), ≈1.8× from masking (known) | [P] |
+| Samples seen by the expensive model | ≈3.2·10⁹ | 4·10⁸ | ≈8× | data curation and modern training practice (known). CRISP's C + I contribute a head start worth a fixed ≈4·10¹³ FLOPs at PoC scale (§7, E4) | [P] |
+| Text encoder | CLIP-L, 3.3·10²¹ | 25M joint, 4·10¹⁸ | ≈800× on that term | design choice; it **costs prompt fidelity** (L7) | [P] |
+| Fine scales | inside the U-Net and VAE | closed form, 10¹⁶ | — | Theorem 3 | [D] cost; quality at high resolution untested ([E] at 32²: insufficient) |
+| **Total stack** | ≈1·10²² | ≈1.6·10²⁰ | **≈62×** | | [P] |
 
-The new mechanisms account for a modest share of the total. The largest single factor is a choice, not an invention: training on 30× fewer, better samples
-with a model whose expensive part never sees more than 32×32×3 numbers. The new parts are what make that choice viable from scratch:
-closed-form fine scales instead of a trained VAE or super-resolution stack, and closed-form treatment of high noise.
+**The honest summary.** An SD-1.5-class model from scratch on two T4s is plausible in about 7 weeks (central), with weaker prompt
+understanding. Almost all of the ≈60× over SD-1.x comes from choices already known to the field: fewer and better samples, a
+transformer that only sees a 32×32×3 coarse band, masking, and a small jointly trained text encoder. The mechanisms
+invented here change the *structure* of the cost: fine scales and high noise are solved in closed form and never touch the
+expensive model. They did **not** produce a large multiplicative factor in the proof of concept.
 
 ---
 
@@ -510,14 +611,16 @@ gradient method costs ≥ 6·P·tokens per sample, and closed-form solves cost m
 d_in and m are small).
 
 **L4. Overlap, so gains don't multiply [E].** E2 is a direct measurement: RB targets and the scaffold both act on high σ,
-so their speed-ups are not independent. Token masking and multiscale both cut tokens. Published gains of 1.5–20× per technique
+so their speed-ups are not independent, and E4 confirms it (+C+R ≈ +C).
+A head start is also not a speed-up. E4 shows the scaffold's ≈2× early factor shrinking to 1× as training continues, so
+early-training multipliers must not be extrapolated to full budgets. Token masking and multiscale both cut tokens. Published gains of 1.5–20× per technique
 rarely compound beyond ~100× in total.
 
 **L5. Hardware floor [D].** 32 GB in total → with Adam, at most ≈1–1.5 B trainable parameters at useful speed. A 12 B-parameter model needs
 ≈192 GB of optimizer and master state. Frontier parity on 2×T4 is impossible regardless of algorithm.
 
-**L6. Data-ingest floor [D].** Decoding 2 B web images once at ≈5k images/s (16 cores) takes ≈4.6 days, so a LAION-scale
-corpus is impractical on this host. Hence the 30M curated set.
+**L6. Data-ingest floor [D].** Decoding 2 B web images once at ≈5k images/s (16 cores) takes ≈4.6 days of CPU, and storing even
+32×32 coarse bands needs ≈6 TB. A LAION-scale corpus is therefore costly on this host before any learning happens. Hence the 30M curated set.
 
 **L7. Text floor [P].** Without pretrained language models, prompt understanding is limited to what ≈30M alt-texts
 (≈4·10⁸ tokens) can teach. CLIP saw 12.8 B pairs and T5 saw ≈10¹² tokens. Compositional prompt following (attribute binding, counting,
@@ -526,21 +629,164 @@ spatial relations) will lag SD-1.5 and fall far behind T5- or LLM-conditioned mo
 **What approaches the limits.** In the ledger's terms, CRISP aims to spend SGD compute only on $D(p\|G)$ restricted to
 coarse scales and the critical noise window. Everything with closed-form structure is solved in one pass. An ideal
 algorithm under L1–L3 would spend compute proportional to *learnable information × cost per bit extracted*. The remaining
-inefficiency is the SGD constant on the coarse model, for which no first-principles shortcut was found.
+inefficiency is the SGD constant on the coarse model, for which no first-principles shortcut was found. E6 explains why. The learnable
+information sits in a narrow band of mid-to-low noise (σ ≈ 0.01–0.5 at the coarse scale). That is where semantics and fine detail
+are decided, and exactly where none of the closed-form structure applies. The cheap parts of the problem are cheap for everyone. The
+expensive part did not get cheaper.
 
 ---
 
 ## 7. Proof of concept on CPU: results
 
 See `README.md` for commands. Setting: CIFAR-10 32×32, class-conditional (the class label stands in for the prompt). The
-pyramid has one level: 16×16 Haar LL as coarse, plus one detail band. Hardware: 4 CPU cores, no GPU, ≈190 GFLOP/s sustained.
-**Training budgets are ≤4.5·10¹⁴ FLOPs per system, about 10⁻⁵ of the target scale, so treat every number as a mechanism test.**
+pyramid has one level: 16×16×3 Haar LL as coarse, plus one 9×16×16 detail band. Hardware: 4 CPU cores, no GPU, ≈190 GFLOP/s
+sustained. All learned models use the same U-Net (6.3M parameters; 1.85 GFLOP per training sample at 16×16, 7.4 at 32×32), Adam (lr 3·10⁻⁴,
+β = (0.9, 0.99)), batch 64, EMA 0.999, no augmentation, and identical hyperparameters for every method (nothing was tuned per
+method). FLOPs are measured, not estimated: `torch.utils.flop_counter` for every forward and backward pass (including the scaffold's
+matrix–vector products), plus analytic counts for retrieval, scaffold fitting and NMCR. Metrics use a classifier trained here from
+scratch (87.5% CIFAR-10 test accuracy). "SC-FID" is the Fréchet distance in its 128-d feature space, so it is **not comparable to
+published Inception FIDs**. **Budgets are ≤ 4.7·10¹⁴ FLOPs per system, about 3·10⁻⁶ of the central 2×T4 projection, and each comparison
+has one seed plus one replicate. Treat every number as a mechanism test.**
 
-RESULTS_PLACEHOLDER
+### 7.1 E1 + E2: the scaffold and where label noise lives
+
+| σ | EDM skip (free) | spectral | Gaussian | class-cond. scaffold | empirical posterior | label noise V_std | V after stratified RB | posterior ESS |
+|---|---|---|---|---|---|---|---|---|
+| 0.01 | 0.31 | 0.25 | 0.24 | **0.25** | 390.72 | 0.000 | 0.000 | 1.0 |
+| 0.1 | 29.46 | 10.36 | 9.81 | **9.95** | 390.86 | 0.000 | 0.000 | 1.0 |
+| 0.5 | 383.79 | 72.98 | 66.68 | **65.58** | 390.33 | 0.000 | 0.000 | 1.0 |
+| 1.0 | 613.13 | 136.43 | 124.08 | **121.16** | 390.93 | 0.000 | 0.000 | 1.0 |
+| 2.0 | 721.03 | 230.07 | 209.48 | **203.18** | 394.92 | 0.237 | 0.000 | 1.0 |
+| 3.0 | 745.38 | 300.19 | 274.02 | **265.08** | 395.69 | 8.886 | 0.259 | 1.2 |
+| 5.0 | 758.32 | 399.19 | 367.15 | **353.07** | 425.55 | 126.522 | 5.811 | 5.8 |
+| 10.0 | 764.05 | 545.42 | 511.03 | **489.90** | 493.16 | 455.085 | 15.354 | 133.5 |
+| 20.0 | 765.42 | 674.81 | 646.34 | **608.78** | 608.55 | 616.046 | 6.413 | 1238.6 |
+| 80.0 | 765.89 | 744.94 | 728.42 | **680.15** | 679.91 | 700.183 | 2.720 | 4488.4 |
+
+Scaffold fit: 5.08e+12 FLOPs (one pass + eigendecompositions); one scaffold call 3.78e+07 FLOPs; stratified RB 4.57e+06 FLOPs/sample vs exact 6.14e+07.
+
+![E1](results/figures/e1_gap_profile.png)
+![E2](results/figures/e2_label_noise.png)
+
+*Reading.* (i) The class-conditional scaffold, one pass of second moments, is indistinguishable from the exact posterior at
+σ ≥ 10 and 5× better than EDM's free skip term at σ = 1. (ii) The stationary (FFT) scaffold, which scales as $O(d\log d)$ to any
+resolution, is within ≈10% of the full-covariance one. (iii) The posterior's ESS is 1 for σ ≤ 2, so standard DSM targets carry
+**no** label noise there, and Rao-Blackwellization has nothing to remove where ≈94% of EDM's training samples live.
+
+### 7.2 E3: closed-form fine-scale field (Theorem 3 in practice)
+
+| σ | prior | E[d \| coarse] | linear local | **NMCR** | SGD U-Net 1× FLOPs | SGD U-Net 5× FLOPs |
+|---|---|---|---|---|---|---|
+| 5.0000 | 0.02253 | 0.01329 | 0.01324 | **0.01312** | 0.01260 | 0.01073 |
+| 2.0636 | 0.02253 | 0.01329 | 0.01301 | **0.01289** | 0.01198 | 0.01017 |
+| 0.7491 | 0.02253 | 0.01329 | 0.01151 | **0.01139** | 0.01019 | 0.00830 |
+| 0.2290 | 0.02253 | 0.01329 | 0.00596 | **0.00570** | 0.00611 | 0.00435 |
+| 0.0549 | 0.02253 | 0.01329 | 0.00111 | **0.00106** | 0.00130 | 0.00093 |
+| 0.0091 | 0.02253 | 0.01329 | 0.00007 | **0.00007** | 0.00007 | 0.00006 |
+| 0.0020 | 0.02253 | 0.01329 | 0.00000 | **0.00000** | 0.00000 | 0.00000 |
+
+Geometric-mean MSE over the 18 sampler σ: NMCR 0.00187, linear 0.00191, SGD 1× 0.00190, SGD 5× 0.00152. NMCR cost: 2.22e+13 FLOPs total (1,024,000 patches, one pass, 97 s on 2 CPU threads, all 18 σ). SGD baselines: 2.22e+13 and 1.11e+14 FLOPs.
+
+![E3](results/figures/e3_nmcr.png)
+
+*Reading.* The machinery works exactly as derived. One pass over 1.02M patches and 18 Cholesky solves fit the field at all
+sampler noise levels in 97 s, with no noise sampling or backprop. At equal FLOPs it beats the SGD U-Net at low noise, but loses
+at σ ≳ 0.25. The 5× U-Net wins everywhere, and NMCR is only 1–4% better than the purely *linear* local field. The bottleneck
+is the function class (5×5 coarse context, random features in 166 dimensions), not the fitting procedure.
+
+### 7.3 E4: FLOP-matched training of the coarse model (ablations)
+
+Speed-up = (reference budget) / (FLOPs this system needs to reach same-seed EDM's loss at that budget). Reference budget is 1.5·10¹⁴ for seed 0 and 7.5·10¹³ for the seed-1 replicates; the last column uses EDM's final loss at 4.5·10¹⁴.
+
+| system | loss at 0 FLOPs | at 3.75·10¹³ | at 7.5·10¹³ | at 1.5·10¹⁴ | at 4.5·10¹⁴ | speed-up at reference budget | speed-up vs EDM at 4.5·10¹⁴ |
+|---|---|---|---|---|---|---|---|
+| EDM (16x16 LL) | 1.0060 | 0.4439 | 0.3894 | 0.3557 | 0.3241 | 1.00× | 1.00× |
+| +R | 1.0060 | 0.4426 | 0.3891 | 0.3551 | — | 1.01× | — |
+| +C | 0.4220 | 0.3897 | 0.3684 | 0.347 | — | 1.35× | — |
+| +C+R | 0.4220 | 0.3894 | 0.368 | 0.3461 | — | 1.38× | — |
+| +C+I (no R) | 0.4220 | 0.3904 | 0.3671 | 0.3454 | — | 1.42× | — |
+| +C (long run) | 0.4220 | 0.3897 | 0.3684 | 0.347 | 0.3255 | 1.35× | not reached |
+| CRISP: +C+R+I | 0.4220 | 0.3903 | 0.367 | 0.3452 | 0.3247 | 1.42× | not reached |
+| EDM (16x16 LL), seed 1 | 1.0060 | 0.4399 | 0.3823 | — | — | 1.00× | — |
+| CRISP: +C+R+I, seed 1 | 0.4220 | 0.3889 | 0.3653 | — | — | 1.64× | — |
+
+![E4](results/figures/e4_curves.png)
+
+*Reading.* **C (scaffold) is the only training-side pillar with a clear effect**, and it is a head start. At 3.75·10¹³ FLOPs CRISP
+matches what EDM reaches at 7.5·10¹³ (≈2×). At 1.5·10¹⁴ the speed-up is ≈1.4×. By 4.5·10¹⁴ the held-out losses are essentially equal (EDM marginally lower). The
+long C-only run shows whether that convergence is caused by R/I or is intrinsic to the scaffold: at 4.5·10¹⁴ FLOPs EDM reaches 0.3241, CRISP 0.3247, C-only 0.3255 (at 1.5·10¹⁴: EDM 0.3557, C-only 0.3470). C alone ends +0.0014 relative to EDM (full CRISP +0.0006). The convergence is intrinsic to the scaffold parametrization: a transient head start that R and I do not cause, while I recovers a little of the late deficit. **R does nothing**
+(Proposition 2 predicted this: ESS = 1 where the samples are). **I is ≈0.5%.** Per noise band, the scaffold models are better at
+σ ≥ 0.2 and worse at σ < 0.05, where shrinkage from estimated small eigenvalues hurts. Seed replicate at 7.5·10¹³ FLOPs: EDM 0.3894 / 0.3823, CRISP 0.3670 / 0.3653 (seed 0 / seed 1). The CRISP–EDM gap (+0.0223, +0.0170) is 3× the larger seed-to-seed difference.
+
+### 7.4 E6: where the learned information lives (Theorem 1 ledger)
+
+Rows +R, +C, +C+R, +C+I were trained to 1.5·10¹⁴ FLOPs; EDM, CRISP and +C (long run) to 4.5·10¹⁴. Paired evaluation: 1,000 test images × 19 noise levels, identical noise for every model.
+
+| model | total | σ ∈ [0.002, 0.05) | σ ∈ [0.05, 0.5) | σ ∈ [0.5, 5.0) | σ ∈ [5.0, 80.0) |
+|---|---|---|---|---|---|
+| EDM (16x16 LL) | 361 | 116 | 222 | 23 | -1 |
+| CRISP: +C+R+I | 337 | 93 | 218 | 26 | 0 |
+| +C (long run) | 342 | 100 | 217 | 26 | 0 |
+| +R | 186 | 13 | 165 | 10 | -1 |
+| +C | 203 | 9 | 173 | 21 | 0 |
+| +C+R | 207 | 12 | 174 | 21 | 0 |
+| +C+I (no R) | 211 | 14 | 176 | 21 | 0 |
+
+![E6](results/figures/e6_info_density.png)
+
+*Reading.* Paired on identical noisy test inputs, the non-Gaussian information captured beyond the free scaffold sits almost entirely at σ < 0.5
+(≈62–65% in [0.05, 0.5), ≈28–32% in [0.002, 0.05)). It is ≈0 above σ = 5, where the EDM network is still *worse* than the scaffold
+after 4.5·10¹⁴ FLOPs (negative entries). This is the ledger of Theorem 1 measured: the noise levels that carry learnable information are a
+narrow band (density peaks at σ ≈ 0.05–0.1 at this scale), and it is the *expensive* band. Low noise needs fine detail. Mid noise needs semantics. Two further
+observations. At σ ≤ 0.01 *every* trained network, EDM included, is worse than the free Wiener scaffold, which suggests switching to the scaffold
+outright at the lowest noise levels. And the lowest band's information is acquired late (+C: ≈9 nats at 1.5·10¹⁴ → ≈100 at 4.5·10¹⁴): fine
+detail is learned last.
+
+### 7.5 E5: end-to-end generation at matched training FLOPs
+
+| system | training FLOPs | SC-FID ↓ | class accuracy ↑ | precision ↑ | recall ↑ | memorized ↓ | sampling seconds (CPU) |
+|---|---|---|---|---|---|---|---|
+| real training images | — | 0.04 | 0.899 | 0.492 | 0.899 | — | 0 |
+| EDM, 32×32 pixels | 4.50e+14 | 7.63 | 0.426 | 0.554 | 0.234 | 0 | 1059 |
+| pyramid only: EDM coarse + NMCR fine | 4.72e+14 | 12.81 | 0.287 | 0.559 | 0.004 | 0 | 375 |
+| **CRISP** (C+R+I coarse + NMCR fine) | 4.72e+14 | 12.50 | 0.342 | 0.508 | 0.015 | 0 | 412 |
+| zero-SGD: scaffold + NMCR | 2.24e+13 | 14.60 | 0.310 | 0.512 | 0.014 | 0 | 226 |
+| *diagnostic:* real images, detail band zeroed | — | 14.27 | 0.298 | 0.555 | 0.213 | 0.173 | 0 |
+| *diagnostic:* EDM coarse, details zeroed | 4.50e+14 | 19.82 | 0.179 | 0.420 | 0.009 | 0 | 0 |
+| *diagnostic:* CRISP coarse, details zeroed | 4.50e+14 | 18.11 | 0.216 | 0.481 | 0.075 | 0 | 0 |
+| *diagnostic:* scaffold coarse, details zeroed | 1.68e+11 | 21.43 | 0.181 | 0.275 | 0.000 | 0 | 0 |
+
+| EDM 32×32 | CRISP (coarse) + NMCR | pyramid only (EDM coarse + NMCR) | zero-SGD: scaffold + NMCR |
+|---|---|---|---|
+| ![](results/figures/samples_edm32.png) | ![](results/figures/samples_crisp16_nmcr.png) | ![](results/figures/samples_edm16_nmcr.png) | ![](results/figures/samples_scaffold_nmcr.png) |
+
+*Reading.* **The standard pixel-space EDM wins on every metric.** The diagnostics locate the failure. (a) Coarse model: CRISP's coarse
+model beats EDM's coarse model at equal FLOPs (with details zeroed: SC-FID 18.1 vs 19.8, class accuracy 0.22 vs 0.18; with NMCR details 12.5 vs 12.8 and
+0.34 vs 0.29). (b) Fine scale: NMCR details help a lot (18.1 → 12.5) but add visible speckle, and recall stays near zero. (c) The real
+cause is resolution. Removing the detail band from *real* images costs as much as the whole gap (SC-FID 14.3, accuracy 0.30). At 32×32 the
+finest scale is semantic, so a local closed-form field cannot replace learned synthesis. The pyramid systems also spend 4× fewer
+FLOPs per sample at inference (412 s vs 1,059 s on CPU for 2,000 samples).
+
+### 7.6 What the proof of concept does and does not show
+
+* **Shows:** Theorems 1 and 3 hold numerically. A one-pass scaffold is optimal at high noise and a better skip path early in
+  training. Rao-Blackwellization cannot help where the empirical posterior is one-hot. In this setting the CRISP training-side
+  mechanisms give a bounded head start, not a growing multiplicative speed-up. Closed-form local fields are cheap but under-expressive at
+  the scale tested.
+* **Does not show:** anything at 256²–512², where the fine bands are genuinely textural and where the pyramid's 16–256× position
+  reduction is supposed to pay off. Anything about text conditioning. Anything at budgets beyond ≈5·10¹⁴ FLOPs. Seed-to-seed variance
+  beyond one replicate.
 
 ---
 
 ## 8. Validation protocol at scale (what would establish or refute the claims)
+
+**Priority after §7.** C, R and I were measured. R and I can be dropped, and C is a bounded head start. The open, high-value
+question is the **pyramid at resolutions where the fine bands are textural**. The first experiment should therefore be a 256²
+ImageNet comparison of (a) a single-resolution latent DiT with its autoencoder trained from scratch, against (b) a coarse 32²
+model plus learned *local* fine fields (receptive field ≤ 16 coefficients), plus (c) the same with NMCR fine fields, all at
+matched total FLOPs. If (b) does not beat (a), the multiscale route to large savings is closed, and the remaining savings are the
+known ones in §5.5.
 
 **Stage A: class-conditional ImageNet 64² and 256² (from scratch, including the pyramid's own levels).**
 * Baselines at *identical* data, resolution and FLOPs: EDM2, SiT/DiT with and without MaskDiT masking, and a latent-diffusion
@@ -575,7 +821,7 @@ equal *total* FLOPs. Pyramid: the coarse-only model's FID-at-32² does not predi
 | Gaussian scaffold | Wang & Vastola 2023, 2024 (Gaussian score dominates at high noise; used to skip sampling steps) | used as the *training-time* skip path; class/prompt-conditional; tied to the information ledger |
 | Theorem 1 | I-MMSE (Guo, Shamai & Verdú 2005); information-theoretic diffusion (Kong et al. 2023) | used as a compute ledger: learnable-information density per noise level |
 | RB targets | Stable Target Field (Xu, Tong & Jaakkola 2023) | stratified full-dataset estimator; Prop. 2 shows *where* it can and cannot help (one-hot regime) |
-| Info-allocated σ | importance sampling of t in iDDPM; adaptive weighting in EDM2 | argument that loss-based allocation becomes informative only with RB + scaffold targets |
+| Info-allocated σ | importance sampling of t in iDDPM; adaptive weighting in EDM2 | tied to the ledger; measured effect ≈0.5% here, and the claim that it needs RB targets was falsified |
 | Scale pyramid with local fields | Kadkhodaie et al. 2023; Guth et al. 2022 (WSGM) | fine fields fitted in closed form; compute accounting for from-scratch T2I |
 | NMCR (Theorem 3) | random features (Rahimi & Recht 2007); ELS machine (Kamb & Ganguli 2024/25) | σ-independent sufficient statistics: exact noise-integrated training at all σ in one pass; a parametric, amortized counterpart of the patch-posterior (ELS) view |
 | Cheap from-scratch training | micro-budget (Sehwag et al. 2024/25), PixArt-α, Würstchen, DC-AE | no pretrained text encoder, VAE or synthetic data; everything counted |
@@ -587,14 +833,17 @@ equal *total* FLOPs. Pyramid: the coarse-only model's FID-at-32² does not predi
 | Claim | Tag |
 |---|---|
 | Loss decomposition and gap = E‖D*−D_G‖² | [D] |
-| Theorem 1 (negentropy = ½∫ gap ds) | [D] |
+| Theorem 1 (negentropy = ½∫ gap ds); measured ledger: ≈0 learnable information above σ = 5 on CIFAR | [D] + [E] |
 | Prop. 2(a): RB leaves the expected gradient unchanged | [D] |
-| Prop. 2(b): RB targets equal standard targets for σ ≲ 2 on CIFAR pixels | [E] |
-| Theorem 3 (NMCR closed form) and agreement with Monte Carlo | [D] + [E] |
-| Scaffold ≈ optimal at σ ≥ 10 on CIFAR; 5× better than EDM's skip at σ = 1 | [E] |
-| FLOP-matched results of §7 | [E] (small scale) |
-| ≈5.4·10¹⁹ FLOPs and ≈16.5 days on 2×T4 for an SD-1.5-class model | [P] |
-| ≈200× (useful-FLOP) / ≈1,400× (wall-clock) vs SD-1.x | [P] |
+| Prop. 2(b): RB targets equal standard targets for σ ≲ 2 on CIFAR pixels; no training speed-up from R | [E] |
+| Theorem 3 (NMCR closed form), agreement with Monte Carlo, all-σ fit in one pass | [D] + [E] |
+| NMCR expressivity at 5×5 context is insufficient on CIFAR (loses to SGD U-Net at σ ≳ 0.25 or at 5× FLOPs) | [E] |
+| Scaffold ≈ optimal at σ ≥ 10; head start worth ≈4·10¹³ FLOPs, gone by 4.5·10¹⁴ in held-out loss | [E] |
+| Scaffold-based coarse model gives better class adherence of samples at matched FLOPs | [E], one seed |
+| Pyramid + NMCR loses end-to-end to pixel EDM at 32² (SC-FID 12.5 vs 7.6) | [E] |
+| Pyramid wins at 256²–512² where fine bands are local texture | [P], untested; the key open question |
+| SD-1.5-class model from scratch on 2×T4 in 16–117 days (central ≈50) | [P] |
+| ≈26–190× (useful FLOPs) / ≈200–1,500× (wall-clock) vs SD-1.x; mostly from known levers | [P] |
 | Frontier parity at 100,000× less compute on 2×T4 | ruled out (L5 [D], L3/L7 [P]) |
 | Scale recursion, MFA scaffold, H3′ local-posterior targets | [S] |
 

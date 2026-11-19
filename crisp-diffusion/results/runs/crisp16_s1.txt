@@ -1,0 +1,9 @@
+{"config": {"name": "crisp16_s1", "res": 16, "rb": true, "scaffold": true, "ia": true, "budget": 75000000000000.0, "evals": 6, "batch": 64, "lr": 0.0003, "base": 64, "ema": 0.999, "seed": 1, "threads": 4}, "sigma_data": 0.9721055626869202, "params": 6326787, "train_flops_per_sample": 1853784064.0, "aux_flops": 196301291520.0}
+step 0 flops 1.963e+11 test 0.4220 bins [0.8561, 0.5715, 0.3489, 0.2462, 0.3431] t 2s
+step 104 flops 1.255e+13 test 0.4191 bins [0.8563, 0.5693, 0.3447, 0.243, 0.3417] t 48s
+step 209 flops 2.501e+13 test 0.4009 bins [0.8571, 0.5463, 0.3181, 0.233, 0.3423] t 95s
+step 315 flops 3.760e+13 test 0.3889 bins [0.8508, 0.5256, 0.3045, 0.2294, 0.3415] t 146s
+step 420 flops 5.007e+13 test 0.3792 bins [0.8415, 0.509, 0.2946, 0.226, 0.3406] t 194s
+step 525 flops 6.254e+13 test 0.3715 bins [0.8306, 0.4952, 0.2881, 0.2228, 0.3408] t 243s
+step 630 flops 7.501e+13 test 0.3653 bins [0.8198, 0.484, 0.2833, 0.2201, 0.3412] t 291s
+done /home/user/Claude-projects/crisp-diffusion/results/runs/crisp16_s1

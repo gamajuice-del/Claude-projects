@@ -1,0 +1,92 @@
+{
+ "scaffold+nmcr": {
+  "sc_fid": 14.602588262201836,
+  "class_acc": 0.3095000088214874,
+  "precision": 0.5115000009536743,
+  "recall": 0.014000000432133675,
+  "memorized_frac": 0.0,
+  "mean_nn_dist": 19.57703971862793,
+  "sample_seconds": 226.3323516845703,
+  "n": 2000
+ },
+ "crisp16+nmcr": {
+  "sc_fid": 12.495848467391653,
+  "class_acc": 0.34150001406669617,
+  "precision": 0.5080000162124634,
+  "recall": 0.01549999974668026,
+  "memorized_frac": 0.0,
+  "mean_nn_dist": 18.584077835083008,
+  "sample_seconds": 412.3015892505646,
+  "n": 2000
+ },
+ "edm16+nmcr": {
+  "sc_fid": 12.813653048387614,
+  "class_acc": 0.2865000069141388,
+  "precision": 0.5590000152587891,
+  "recall": 0.004000000189989805,
+  "memorized_frac": 0.0,
+  "mean_nn_dist": 20.303424835205078,
+  "sample_seconds": 375.0470597743988,
+  "n": 2000
+ },
+ "edm32": {
+  "sc_fid": 7.625496990763807,
+  "class_acc": 0.42649999260902405,
+  "precision": 0.5544999837875366,
+  "recall": 0.23399999737739563,
+  "memorized_frac": 0.0,
+  "mean_nn_dist": 20.04102325439453,
+  "sample_seconds": 1058.6337201595306,
+  "n": 2000
+ },
+ "real_train": {
+  "sc_fid": 0.03913433396267921,
+  "class_acc": 0.8985000252723694,
+  "precision": 0.492000013589859,
+  "recall": 0.8985000252723694,
+  "memorized_frac": null,
+  "mean_nn_dist": null,
+  "sample_seconds": 0.0,
+  "n": 2000
+ },
+ "real_train+zero_details": {
+  "sc_fid": 14.273614620248463,
+  "class_acc": 0.29750001430511475,
+  "precision": 0.5550000071525574,
+  "recall": 0.2134999930858612,
+  "memorized_frac": 0.17299999296665192,
+  "mean_nn_dist": 6.949700355529785,
+  "sample_seconds": 0.0,
+  "n": 2000
+ },
+ "crisp16+zero_details": {
+  "sc_fid": 18.11044556050472,
+  "class_acc": 0.2160000056028366,
+  "precision": 0.48100000619888306,
+  "recall": 0.07450000196695328,
+  "memorized_frac": 0.0,
+  "mean_nn_dist": 17.487272262573242,
+  "sample_seconds": 0.0,
+  "n": 2000
+ },
+ "edm16+zero_details": {
+  "sc_fid": 19.82330486683921,
+  "class_acc": 0.17949999868869781,
+  "precision": 0.41999998688697815,
+  "recall": 0.008500000461935997,
+  "memorized_frac": 0.0,
+  "mean_nn_dist": 19.20063591003418,
+  "sample_seconds": 0.0,
+  "n": 2000
+ },
+ "scaffold+zero_details": {
+  "sc_fid": 21.42891551026134,
+  "class_acc": 0.1809999942779541,
+  "precision": 0.2745000123977661,
+  "recall": 0.0,
+  "memorized_frac": 0.0,
+  "mean_nn_dist": 18.491241455078125,
+  "sample_seconds": 0.0,
+  "n": 2000
+ }
+}

@@ -1,0 +1,15 @@
+{"config": {"name": "abl16_scaffold", "res": 16, "rb": false, "scaffold": true, "ia": false, "budget": 150000000000000.0, "evals": 12, "batch": 64, "lr": 0.0003, "base": 64, "ema": 0.999, "seed": 0, "threads": 4}, "sigma_data": 0.9721055626869202, "params": 6326787, "train_flops_per_sample": 1853784064.0, "aux_flops": 167793131520.0}
+step 0 flops 1.678e+11 test 0.4220 bins [0.8561, 0.5715, 0.3489, 0.2462, 0.3431] t 3s
+step 104 flops 1.251e+13 test 0.4184 bins [0.8566, 0.5686, 0.3438, 0.2425, 0.3417] t 54s
+step 210 flops 2.508e+13 test 0.3997 bins [0.8564, 0.5438, 0.317, 0.2329, 0.3417] t 108s
+step 315 flops 3.754e+13 test 0.3897 bins [0.8528, 0.5282, 0.3051, 0.2285, 0.3412] t 162s
+step 421 flops 5.012e+13 test 0.3811 bins [0.8459, 0.5133, 0.2963, 0.2252, 0.3403] t 215s
+step 526 flops 6.257e+13 test 0.3743 bins [0.8381, 0.5007, 0.2902, 0.2232, 0.3396] t 265s
+step 631 flops 7.503e+13 test 0.3684 bins [0.829, 0.4901, 0.2855, 0.2209, 0.3381] t 316s
+step 737 flops 8.761e+13 test 0.3632 bins [0.8197, 0.4802, 0.2817, 0.219, 0.3373] t 369s
+step 842 flops 1.001e+14 test 0.3590 bins [0.8104, 0.4727, 0.2789, 0.2175, 0.3359] t 421s
+step 947 flops 1.125e+14 test 0.3553 bins [0.8011, 0.4661, 0.2766, 0.2162, 0.3349] t 476s
+step 1053 flops 1.251e+14 test 0.3523 bins [0.7916, 0.4612, 0.2747, 0.2149, 0.3341] t 527s
+step 1158 flops 1.376e+14 test 0.3495 bins [0.7818, 0.4569, 0.2731, 0.2137, 0.3335] t 588s
+step 1263 flops 1.500e+14 test 0.3470 bins [0.7717, 0.4532, 0.2716, 0.2127, 0.3329] t 647s
+done /home/user/Claude-projects/crisp-diffusion/results/runs/abl16_scaffold

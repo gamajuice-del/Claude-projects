@@ -14,4 +14,62 @@
 | 20.0 | 765.42 | 674.81 | 646.34 | **608.78** | 608.55 | 616.046 | 6.413 | 1238.6 |
 | 80.0 | 765.89 | 744.94 | 728.42 | **680.15** | 679.91 | 700.183 | 2.720 | 4488.4 |
 
-Scaffold fit: 4.13e+12 FLOPs (one pass + eigendecompositions); one scaffold call 3.78e+07 FLOPs; stratified RB 4.57e+06 FLOPs/sample vs exact 6.14e+07.
+Scaffold fit: 5.08e+12 FLOPs (one pass + eigendecompositions); one scaffold call 3.78e+07 FLOPs; stratified RB 4.57e+06 FLOPs/sample vs exact 6.14e+07.
+
+#### E3: closed-form local field for the finest scale (test MSE per detail coefficient)
+
+| σ | prior | E[d \| coarse] | linear local | **NMCR** | SGD U-Net 1× FLOPs | SGD U-Net 5× FLOPs |
+|---|---|---|---|---|---|---|
+| 5.0000 | 0.02253 | 0.01329 | 0.01324 | **0.01312** | 0.01260 | 0.01073 |
+| 2.0636 | 0.02253 | 0.01329 | 0.01301 | **0.01289** | 0.01198 | 0.01017 |
+| 0.7491 | 0.02253 | 0.01329 | 0.01151 | **0.01139** | 0.01019 | 0.00830 |
+| 0.2290 | 0.02253 | 0.01329 | 0.00596 | **0.00570** | 0.00611 | 0.00435 |
+| 0.0549 | 0.02253 | 0.01329 | 0.00111 | **0.00106** | 0.00130 | 0.00093 |
+| 0.0091 | 0.02253 | 0.01329 | 0.00007 | **0.00007** | 0.00007 | 0.00006 |
+| 0.0020 | 0.02253 | 0.01329 | 0.00000 | **0.00000** | 0.00000 | 0.00000 |
+
+Geometric-mean MSE over the 18 sampler σ: NMCR 0.00187, linear 0.00191, SGD 1× 0.00190, SGD 5× 0.00152. NMCR cost: 2.22e+13 FLOPs total (1,024,000 patches, one pass, 97 s on 2 CPU threads, all 18 σ). SGD baselines: 2.22e+13 and 1.11e+14 FLOPs.
+
+#### E4: FLOP-matched ablations on the coarse (16×16 LL) model, held-out loss (lower is better)
+
+Speed-up = (reference budget) / (FLOPs this system needs to reach same-seed EDM's loss at that budget). Reference budget is 1.5·10¹⁴ for seed 0 and 7.5·10¹³ for the seed-1 replicates; the last column uses EDM's final loss at 4.5·10¹⁴.
+
+| system | loss at 0 FLOPs | at 3.75·10¹³ | at 7.5·10¹³ | at 1.5·10¹⁴ | at 4.5·10¹⁴ | speed-up at reference budget | speed-up vs EDM at 4.5·10¹⁴ |
+|---|---|---|---|---|---|---|---|
+| EDM (16x16 LL) | 1.0060 | 0.4439 | 0.3894 | 0.3557 | 0.3241 | 1.00× | 1.00× |
+| +R | 1.0060 | 0.4426 | 0.3891 | 0.3551 | — | 1.01× | — |
+| +C | 0.4220 | 0.3897 | 0.3684 | 0.347 | — | 1.35× | — |
+| +C+R | 0.4220 | 0.3894 | 0.368 | 0.3461 | — | 1.38× | — |
+| +C+I (no R) | 0.4220 | 0.3904 | 0.3671 | 0.3454 | — | 1.42× | — |
+| +C (long run) | 0.4220 | 0.3897 | 0.3684 | 0.347 | 0.3255 | 1.35× | not reached |
+| CRISP: +C+R+I | 0.4220 | 0.3903 | 0.367 | 0.3452 | 0.3247 | 1.42× | not reached |
+| EDM (16x16 LL), seed 1 | 1.0060 | 0.4399 | 0.3823 | — | — | 1.00× | — |
+| CRISP: +C+R+I, seed 1 | 0.4220 | 0.3889 | 0.3653 | — | — | 1.64× | — |
+
+#### E6: non-Gaussian information captured, by noise band (lower bound, nats per 16×16×3 image; Theorem 1)
+
+Rows +R, +C, +C+R, +C+I were trained to 1.5·10¹⁴ FLOPs; EDM, CRISP and +C (long run) to 4.5·10¹⁴. Paired evaluation: 1,000 test images × 19 noise levels, identical noise for every model.
+
+| model | total | σ ∈ [0.002, 0.05) | σ ∈ [0.05, 0.5) | σ ∈ [0.5, 5.0) | σ ∈ [5.0, 80.0) |
+|---|---|---|---|---|---|
+| EDM (16x16 LL) | 361 | 116 | 222 | 23 | -1 |
+| CRISP: +C+R+I | 337 | 93 | 218 | 26 | 0 |
+| +C (long run) | 342 | 100 | 217 | 26 | 0 |
+| +R | 186 | 13 | 165 | 10 | -1 |
+| +C | 203 | 9 | 173 | 21 | 0 |
+| +C+R | 207 | 12 | 174 | 21 | 0 |
+| +C+I (no R) | 211 | 14 | 176 | 21 | 0 |
+
+#### E5: end-to-end class-conditional generation (2,000 samples; self-trained-classifier metrics)
+
+| system | training FLOPs | SC-FID ↓ | class accuracy ↑ | precision ↑ | recall ↑ | memorized ↓ | sampling seconds (CPU) |
+|---|---|---|---|---|---|---|---|
+| real training images | — | 0.04 | 0.899 | 0.492 | 0.899 | — | 0 |
+| EDM, 32×32 pixels | 4.50e+14 | 7.63 | 0.426 | 0.554 | 0.234 | 0 | 1059 |
+| pyramid only: EDM coarse + NMCR fine | 4.72e+14 | 12.81 | 0.287 | 0.559 | 0.004 | 0 | 375 |
+| **CRISP** (C+R+I coarse + NMCR fine) | 4.72e+14 | 12.50 | 0.342 | 0.508 | 0.015 | 0 | 412 |
+| zero-SGD: scaffold + NMCR | 2.24e+13 | 14.60 | 0.310 | 0.512 | 0.014 | 0 | 226 |
+| *diagnostic:* real images, detail band zeroed | — | 14.27 | 0.298 | 0.555 | 0.213 | 0.173 | 0 |
+| *diagnostic:* EDM coarse, details zeroed | 4.50e+14 | 19.82 | 0.179 | 0.420 | 0.009 | 0 | 0 |
+| *diagnostic:* CRISP coarse, details zeroed | 4.50e+14 | 18.11 | 0.216 | 0.481 | 0.075 | 0 | 0 |
+| *diagnostic:* scaffold coarse, details zeroed | 1.68e+11 | 21.43 | 0.181 | 0.275 | 0.000 | 0 | 0 |

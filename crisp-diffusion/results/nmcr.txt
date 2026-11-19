@@ -1,4 +1,24 @@
 detail std 0.15010811388492584 LL std 0.9721055626869202
-accumulated 1024000 train / 128000 val patches in 110s, 2.183e+13 FLOPs
-solved 18 sigmas, total NMCR FLOPs 2.223e+13, 143s
-cnn 1x: {'flops_per_sample': 319045632.0, 'steps': 1088, 'flops': 22215785447424.0, 'seconds': 203.37599182128906}
+accumulated 1024000 train / 128000 val patches in 78s, 2.183e+13 FLOPs
+solved 18 sigmas, total NMCR FLOPs 2.223e+13, 97s
+cnn 1x: {'flops_per_sample': 319045632.0, 'steps': 1088, 'flops': 22215785447424.0, 'seconds': 125.18499183654785}
+cnn 5x: {'flops_per_sample': 319045632.0, 'steps': 5444, 'flops': 111160602918912.0, 'seconds': 623.6687684059143}
+sigma  5.0000  nmcr 0.01312  lin 0.01324  cond 0.01329  cnn1 0.01260  cnn5 0.01073  prior 0.02253
+sigma  3.7686  nmcr 0.01309  lin 0.01321  cond 0.01329  cnn1 0.01245  cnn5 0.01067  prior 0.02253
+sigma  2.8068  nmcr 0.01301  lin 0.01313  cond 0.01329  cnn1 0.01230  cnn5 0.01044  prior 0.02253
+sigma  2.0636  nmcr 0.01289  lin 0.01301  cond 0.01329  cnn1 0.01198  cnn5 0.01017  prior 0.02253
+sigma  1.4959  nmcr 0.01266  lin 0.01277  cond 0.01329  cnn1 0.01155  cnn5 0.00979  prior 0.02253
+sigma  1.0677  nmcr 0.01220  lin 0.01232  cond 0.01329  cnn1 0.01099  cnn5 0.00914  prior 0.02253
+sigma  0.7491  nmcr 0.01139  lin 0.01151  cond 0.01329  cnn1 0.01019  cnn5 0.00830  prior 0.02253
+sigma  0.5158  nmcr 0.00998  lin 0.01013  cond 0.01329  cnn1 0.00913  cnn5 0.00716  prior 0.02253
+sigma  0.3478  nmcr 0.00800  lin 0.00819  cond 0.01329  cnn1 0.00770  cnn5 0.00577  prior 0.02253
+sigma  0.2290  nmcr 0.00570  lin 0.00596  cond 0.01329  cnn1 0.00611  cnn5 0.00435  prior 0.02253
+sigma  0.1469  nmcr 0.00363  lin 0.00385  cond 0.01329  cnn1 0.00439  cnn5 0.00300  prior 0.02253
+sigma  0.0914  nmcr 0.00205  lin 0.00218  cond 0.01329  cnn1 0.00262  cnn5 0.00180  prior 0.02253
+sigma  0.0549  nmcr 0.00106  lin 0.00111  cond 0.01329  cnn1 0.00130  cnn5 0.00093  prior 0.02253
+sigma  0.0317  nmcr 0.00049  lin 0.00050  cond 0.01329  cnn1 0.00055  cnn5 0.00042  prior 0.02253
+sigma  0.0175  nmcr 0.00019  lin 0.00020  cond 0.01329  cnn1 0.00021  cnn5 0.00016  prior 0.02253
+sigma  0.0091  nmcr 0.00007  lin 0.00007  cond 0.01329  cnn1 0.00007  cnn5 0.00006  prior 0.02253
+sigma  0.0045  nmcr 0.00002  lin 0.00002  cond 0.01329  cnn1 0.00002  cnn5 0.00002  prior 0.02253
+sigma  0.0020  nmcr 0.00000  lin 0.00000  cond 0.01329  cnn1 0.00000  cnn5 0.00000  prior 0.02253
+done

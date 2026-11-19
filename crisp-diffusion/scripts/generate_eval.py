@@ -27,6 +27,9 @@ from crisp.unet import UNet
 from train_classifier import Classifier
 
 PER_CLASS = 200
+RESCORE = "--rescore" in sys.argv
+if RESCORE:
+    sys.argv.remove("--rescore")
 
 
 def load_model(name, xtr_view, ytr):
@@ -92,7 +95,8 @@ def generate(system, xtr, ytr, bs=200):
 def fid(f1, f2):
     from scipy import linalg
     m1, m2 = f1.mean(0), f2.mean(0)
-    c1, c2 = np.cov(f1, rowvar=False), np.cov(f2, rowvar=False)
+    eps = 1e-6 * np.eye(f1.shape[1])  # ReLU features can give singular covariances (as in pytorch-fid)
+    c1, c2 = np.cov(f1, rowvar=False) + eps, np.cov(f2, rowvar=False) + eps
     cs = linalg.sqrtm(c1 @ c2)
     if isinstance(cs, tuple):  # older SciPy returns (sqrtm, errest)
         cs = cs[0]
@@ -133,10 +137,15 @@ def main():
         import json
         results = json.load(open(prev))
     for sysname in systems:
+        npz = os.path.join(RESULTS, f"samples_{sysname.replace('+', '_')}.npz")
         if sysname == "real_train":
             g = torch.Generator().manual_seed(0)
             idx = torch.cat([(ytr == c).nonzero(as_tuple=True)[0][torch.randperm(5000, generator=g)[:PER_CLASS]] for c in range(10)])
             x, ys, secs = xtr[idx], ytr[idx], 0.0
+        elif RESCORE and os.path.exists(npz):  # recompute metrics on saved samples, keep recorded sampling time
+            z = np.load(npz)
+            x = torch.from_numpy(z["x"]).float().div(127.5).sub(1.0)
+            ys, secs = torch.from_numpy(z["y"]), results.get(sysname, {}).get("sample_seconds", 0.0)
         else:
             x, ys, secs = generate(sysname, xtr, ytr)
         with torch.no_grad():

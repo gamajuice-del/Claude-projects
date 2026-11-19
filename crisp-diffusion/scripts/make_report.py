@@ -16,7 +16,8 @@ FIG = os.path.join(RESULTS, "figures")
 os.makedirs(FIG, exist_ok=True)
 J = lambda *p: json.load(open(os.path.join(RESULTS, *p))) if os.path.exists(os.path.join(RESULTS, *p)) else None
 RUNS = {"edm16": "EDM (16x16 LL)", "abl16_rb": "+R", "abl16_scaffold": "+C", "abl16_rb_scaf": "+C+R",
-        "abl16_scaf_ia": "+C+I (no R)", "crisp16_full": "CRISP: +C+R+I", "edm32": "EDM (32x32 pixels)"}
+        "abl16_scaf_ia": "+C+I (no R)", "abl16_scaffold_long": "+C (long run)", "crisp16_full": "CRISP: +C+R+I", "edm16_s1": "EDM (16x16 LL), seed 1",
+        "crisp16_s1": "CRISP: +C+R+I, seed 1", "edm32": "EDM (32x32 pixels)"}
 lines = []
 
 
@@ -105,15 +106,18 @@ def curves():
         if k == "edm32":
             continue
         c = v["curve"]
-        ax.semilogx([max(p["flops"], 1e11) for p in c], [p["test_loss"] for p in c], "o-", ms=3, label=RUNS[k])
-    ax.set_xlabel("training FLOPs (all counted)"); ax.set_ylabel("held-out EDM-weighted loss (coarse 16x16)")
+        ax.plot([p["flops"] for p in c], [p["test_loss"] for p in c], "o-", ms=3, label=RUNS[k],
+                ls="--" if k.endswith("_s1") else "-")
+    ax.set_ylim(0.31, 0.47); ax.set_xlim(0, 4.6e14)
+    ax.set_xlabel("training FLOPs (all counted; linear axis)"); ax.set_ylabel("held-out EDM-weighted loss (coarse 16x16)")
     ax.grid(alpha=.3); ax.legend(fontsize=8); ax.set_title("E4: FLOP-matched training on the coarse scale")
     fig.tight_layout(); fig.savefig(os.path.join(FIG, "e4_curves.png"), dpi=130); plt.close(fig)
 
-    base = logs.get("edm16")
     lines.append("\n#### E4: FLOP-matched ablations on the coarse (16×16 LL) model, held-out loss (lower is better)\n")
-    lines.append("| system | loss at 0 FLOPs | at 5·10¹³ | at 1.5·10¹⁴ | at 4.5·10¹⁴ | FLOPs to reach EDM's loss at 1.5·10¹⁴ | speed-up |")
-    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("Speed-up = (reference budget) / (FLOPs this system needs to reach same-seed EDM's loss at that budget). "
+                 "Reference budget is 1.5·10¹⁴ for seed 0 and 7.5·10¹³ for the seed-1 replicates; the last column uses EDM's final loss at 4.5·10¹⁴.\n")
+    lines.append("| system | loss at 0 FLOPs | at 3.75·10¹³ | at 7.5·10¹³ | at 1.5·10¹⁴ | at 4.5·10¹⁴ | speed-up at reference budget | speed-up vs EDM at 4.5·10¹⁴ |")
+    lines.append("|---|---|---|---|---|---|---|---|")
 
     def at(c, f):
         xs = [p["flops"] for p in c]; ys = [p["test_loss"] for p in c]
@@ -130,16 +134,21 @@ def curves():
                 return math.exp(math.log(max(a["flops"], 1e9)) + t * (math.log(b["flops"]) - math.log(max(a["flops"], 1e9))))
         return None
 
-    target = at(base["curve"], 1.5e14) if base else None
+    ref = {"": ("edm16", 1.5e14), "_s1": ("edm16_s1", 7.5e13)}
+    targets = {s: (at(logs[b]["curve"], f), f) for s, (b, f) in ref.items() if b in logs}
+    final = at(logs["edm16"]["curve"], 4.5e14) if "edm16" in logs else None
     speed = {}
     for k, v in logs.items():
         if k == "edm32":
             continue
         c = v["curve"]
-        r = reach(c, target) if target else None
-        speed[k] = (1.5e14 / r) if r else None
-        lines.append(f"| {RUNS[k]} | {c[0]['test_loss']:.4f} | {fmt(at(c, 5e13), 4)} | {fmt(at(c, 1.5e14), 4)} | {fmt(at(c, 4.5e14), 4)} | "
-                     f"{'%.2e' % r if r else 'not reached'} | {('%.1f×' % speed[k]) if speed[k] else '—'} |")
+        tgt, fref = targets.get("_s1" if k.endswith("_s1") else "", (None, None))
+        r = reach(c, tgt) if tgt else None
+        speed[k] = (fref / r) if r else None
+        rf = reach(c, final) if (final and c[-1]["flops"] >= 4.4e14) else None
+        late = ("%.2f×" % (4.5e14 / rf)) if rf else ("not reached" if c[-1]["flops"] >= 4.4e14 else "—")
+        lines.append(f"| {RUNS[k]} | {c[0]['test_loss']:.4f} | {fmt(at(c, 3.75e13), 4)} | {fmt(at(c, 7.5e13), 4)} | {fmt(at(c, 1.5e14), 4)} | "
+                     f"{fmt(at(c, 4.5e14), 4)} | {('%.2f×' % speed[k]) if speed[k] else 'not reached'} | {late} |")
     return speed
 
 
@@ -161,8 +170,12 @@ def generation():
     tf = {"edm32": fl.get("edm32"), "edm16+nmcr": (fl.get("edm16", 0) + nmf) or None,
           "crisp16+nmcr": (fl.get("crisp16_full", 0) + nmf) or None, "scaffold+nmcr": scf + nmf, "real_train": None}
     names = {"edm32": "EDM, 32×32 pixels", "edm16+nmcr": "pyramid only: EDM coarse + NMCR fine",
-             "crisp16+nmcr": "**CRISP** (C+R+I coarse + NMCR fine)", "scaffold+nmcr": "zero-SGD: scaffold + NMCR", "real_train": "real training images"}
-    for k in ["real_train", "edm32", "edm16+nmcr", "crisp16+nmcr", "scaffold+nmcr"]:
+             "crisp16+nmcr": "**CRISP** (C+R+I coarse + NMCR fine)", "scaffold+nmcr": "zero-SGD: scaffold + NMCR", "real_train": "real training images",
+             "real_train+zero_details": "*diagnostic:* real images, detail band zeroed", "crisp16+zero_details": "*diagnostic:* CRISP coarse, details zeroed",
+             "edm16+zero_details": "*diagnostic:* EDM coarse, details zeroed", "scaffold+zero_details": "*diagnostic:* scaffold coarse, details zeroed"}
+    tf.update({"crisp16+zero_details": fl.get("crisp16_full"), "edm16+zero_details": fl.get("edm16"), "scaffold+zero_details": scf, "real_train+zero_details": None})
+    for k in ["real_train", "edm32", "edm16+nmcr", "crisp16+nmcr", "scaffold+nmcr",
+              "real_train+zero_details", "edm16+zero_details", "crisp16+zero_details", "scaffold+zero_details"]:
         if k in g:
             v = g[k]
             lines.append(f"| {names[k]} | {('%.2e' % tf[k]) if tf.get(k) else '—'} | {v['sc_fid']:.2f} | {v['class_acc']:.3f} | {v['precision']:.3f} | "
@@ -170,6 +183,8 @@ def generation():
     # sample grids
     for k in g:
         p = os.path.join(RESULTS, f"samples_{k.replace('+', '_')}.npz")
+        if "zero" in k:
+            continue
         if not os.path.exists(p):
             continue
         z = np.load(p); x, y = z["x"], z["y"]
@@ -196,6 +211,8 @@ def gap():
     ax.grid(alpha=.3); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(os.path.join(FIG, "e6_info_density.png"), dpi=130); plt.close(fig)
     lines.append("\n#### E6: non-Gaussian information captured, by noise band (lower bound, nats per 16×16×3 image; Theorem 1)\n")
+    lines.append("Rows +R, +C, +C+R, +C+I were trained to 1.5·10¹⁴ FLOPs; EDM, CRISP and +C (long run) to 4.5·10¹⁴. Paired evaluation: "
+                 "1,000 test images × 19 noise levels, identical noise for every model.\n")
     bands = list(next(iter(gp["nats_by_band"].values())).keys())
     lines.append("| model | total | " + " | ".join(f"σ ∈ [{b.replace('-', ', ')})" for b in bands) + " |")
     lines.append("|---|---|" + "---|" * len(bands))

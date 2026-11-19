@@ -1,0 +1,7 @@
+/home/user/Claude-projects/crisp-diffusion/scripts/generate_eval.py:96: LinAlgWarning: Matrix is singular. The result might be inaccurate or the array might not have a square root.
+  cs = linalg.sqrtm(c1 @ c2)
+scaffold+nmcr {'sc_fid': 14.603222896754232, 'class_acc': 0.3095000088214874, 'precision': 0.5105000138282776, 'recall': 0.014000000432133675, 'memorized_frac': 0.0, 'mean_nn_dist': 19.576555252075195, 'sample_seconds': 226.3323516845703, 'n': 2000}
+crisp16+nmcr {'sc_fid': 12.492299855132927, 'class_acc': 0.34200000762939453, 'precision': 0.5084999799728394, 'recall': 0.01549999974668026, 'memorized_frac': 0.0, 'mean_nn_dist': 18.583635330200195, 'sample_seconds': 412.3015892505646, 'n': 2000}
+edm16+nmcr {'sc_fid': 12.813614472523142, 'class_acc': 0.2854999899864197, 'precision': 0.5584999918937683, 'recall': 0.0044999998062849045, 'memorized_frac': 0.0, 'mean_nn_dist': 20.30294418334961, 'sample_seconds': 375.0470597743988, 'n': 2000}
+edm32 {'sc_fid': 7.6236515890172685, 'class_acc': 0.4259999990463257, 'precision': 0.5565000176429749, 'recall': 0.23000000417232513, 'memorized_frac': 0.0, 'mean_nn_dist': 20.040544509887695, 'sample_seconds': 1058.6337201595306, 'n': 2000}
+real_train {'sc_fid': 0.03913863910890947, 'class_acc': 0.8985000252723694, 'precision': 0.492000013589859, 'recall': 0.8985000252723694, 'memorized_frac': None, 'mean_nn_dist': None, 'sample_seconds': 0.0, 'n': 2000}
