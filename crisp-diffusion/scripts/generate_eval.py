@@ -37,6 +37,13 @@ def load_model(name, xtr_view, ytr):
     cfg = ck["config"]
     C = xtr_view.shape[1]
     scaffold = GaussianScaffold(xtr_view, ytr, num_classes=10) if cfg["scaffold"] else None
+    k = cfg.get("retrieve", 0)
+    if k or cfg.get("aux_input"):
+        from crisp.edm import RetrievalDenoiser
+        net = UNet(2 * C + k * C, C, base=cfg["base"], num_classes=10)
+        net.load_state_dict(ck["state"])
+        return RetrievalDenoiser(net, ck["sigma_data"], scaffold, {c: xtr_view[ytr == c] for c in range(10)}, k=k,
+                                 skip=cfg.get("skip", "scaffold")).eval()
     net = UNet(2 * C if cfg["scaffold"] else C, C, base=cfg["base"], num_classes=10)
     net.load_state_dict(ck["state"])
     return Denoiser(net, ck["sigma_data"], scaffold).eval()

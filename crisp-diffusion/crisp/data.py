@@ -47,3 +47,10 @@ def haar_inv(ll, det):
     x[..., 0::2, 0::2], x[..., 0::2, 1::2] = a, b
     x[..., 1::2, 0::2], x[..., 1::2, 1::2] = c, d
     return x
+
+
+def load_imagenette(res=64, device="cpu"):
+    """fast.ai Imagenette (10 ImageNet classes), center-cropped to res x res; NCHW float32 in [-1, 1]."""
+    z = np.load(os.path.join(DATA_DIR, f"imagenette{res}.npz"))
+    f = lambda a: torch.from_numpy(a).permute(0, 3, 1, 2).float().div(127.5).sub(1.0).to(device)
+    return f(z["xtr"]), torch.from_numpy(z["ytr"]).to(device), f(z["xte"]), torch.from_numpy(z["yte"]).to(device)

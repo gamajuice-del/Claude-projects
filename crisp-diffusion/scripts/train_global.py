@@ -22,7 +22,7 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from crisp.common import RESULTS, cifar_view
 from crisp.edm import (Denoiser, InfoAllocatedSigma, LogNormalSigma, edm_weight,
-                       measure_train_flops)
+                       measure_fwd_flops, measure_train_flops)
 from crisp.rb import StratifiedPosterior
 from crisp.scaffold import GaussianScaffold
 from crisp.unet import UNet
@@ -82,6 +82,19 @@ def main():
     ap.add_argument("--ema", type=float, default=0.999)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--threads", type=int, default=4)
+    ap.add_argument("--teacher_net", default=None, help="run name of a trained model used as target (oracle diagnostic)")
+    ap.add_argument("--teacher_ls", action="store_true", help="closed-form LS-machine teacher (leave-one-out)")
+    ap.add_argument("--td", type=float, default=0.0, help="TD bootstrapping: target = EMA(x_s, s) with s = td * sigma")
+    ap.add_argument("--td_floor", type=float, default=0.02, help="below this sigma_s use x0 (anchor)")
+    ap.add_argument("--teacher_mix", type=float, default=1.0, help="target = (1-a) x0 + a * teacher")
+    ap.add_argument("--teacher_anneal", type=float, default=0.0, help="if >0, a decays linearly to 0 at this many FLOPs")
+    ap.add_argument("--count_teacher", type=int, default=1, help="count teacher FLOPs in the budget (0 only for the oracle diagnostic)")
+    ap.add_argument("--retrieve", type=int, default=0, help="k nearest training images fed as inputs (leave-one-out in training)")
+    ap.add_argument("--skip", default="scaffold", choices=["scaffold", "edm"], help="skip path when scaffold/retrieval are used")
+    ap.add_argument("--opt", default="adam", choices=["adam", "muon"])
+    ap.add_argument("--patch_retrieve", type=int, default=0, help="k exemplar mosaics from translation-equivariant patch retrieval")
+    ap.add_argument("--muon_lr", type=float, default=0.02)
+    ap.add_argument("--aux_input", action="store_true", help="use the RetrievalDenoiser path even with k=0 (scaffold as input only)")
     a = ap.parse_args()
     torch.set_num_threads(a.threads)
     torch.manual_seed(a.seed)
@@ -100,16 +113,53 @@ def main():
     if rb is not None:
         aux_flops += 2 * min(len(xtr), 20000) * xtr[0].numel() ** 2 + 2 * len(xtr) * xtr[0].numel() * 64  # SVD sketch + projection
 
-    net = UNet(2 * C if a.scaffold else C, C, base=a.base, num_classes=10)
-    model = Denoiser(net, sd, scaffold)
+    if a.patch_retrieve:
+        from crisp.edm import PatchRetrievalDenoiser
+        net = UNet(2 * C + a.patch_retrieve * C, C, base=a.base, num_classes=10)
+        model = PatchRetrievalDenoiser(net, sd, scaffold, {c: xtr[ytr == c] for c in range(10)}, k=a.patch_retrieve, skip=a.skip)
+        pos = torch.full((len(ytr),), -1, dtype=torch.long)
+        for c in range(10):
+            m = (ytr == c).nonzero(as_tuple=True)[0]
+            pos[m] = torch.arange(len(m))
+    elif a.retrieve or a.aux_input:
+        from crisp.edm import RetrievalDenoiser
+        net = UNet(2 * C + a.retrieve * C, C, base=a.base, num_classes=10)
+        pools = {c: xtr[ytr == c] for c in range(10)}
+        model = RetrievalDenoiser(net, sd, scaffold, pools, k=a.retrieve, skip=a.skip)
+        pos = torch.full((len(ytr),), -1, dtype=torch.long)
+        for c in range(10):
+            m = (ytr == c).nonzero(as_tuple=True)[0]
+            pos[m] = torch.arange(len(m))
+    else:
+        net = UNet(2 * C if a.scaffold else C, C, base=a.base, num_classes=10)
+        model = Denoiser(net, sd, scaffold)
     ema = copy.deepcopy(model).eval()
     for p in ema.parameters():
         p.requires_grad_(False)
-    opt = torch.optim.Adam(net.parameters(), lr=a.lr, betas=(0.9, 0.99))
+    muon = None
+    if a.opt == "muon":
+        from crisp.optim import Muon, split_params
+        mp, ap_ = split_params(net)
+        muon = Muon(mp, lr=a.muon_lr)
+        opt = torch.optim.Adam(ap_, lr=a.lr, betas=(0.9, 0.99))
+    else:
+        opt = torch.optim.Adam(net.parameters(), lr=a.lr, betas=(0.9, 0.99))
     sampler = InfoAllocatedSigma(seed=a.seed) if a.ia else LogNormalSigma(seed=a.seed)
     g = torch.Generator().manual_seed(a.seed + 7)
 
     fl_step = measure_train_flops(model, xtr[:a.batch], torch.rand(a.batch) + 0.1, ytr[:a.batch])
+    teacher, ls, fl_teacher, teacher_flops = None, None, 0.0, 0.0
+    if a.teacher_net:
+        from generate_eval import load_model
+        teacher = load_model(a.teacher_net, xtr, ytr)
+        fl_teacher = measure_fwd_flops(teacher, xtr[:a.batch], torch.rand(a.batch) + 0.1, ytr[:a.batch])
+    if a.td > 0:
+        fl_teacher = measure_fwd_flops(ema, xtr[:a.batch], torch.rand(a.batch) + 0.1, ytr[:a.batch])
+    if a.teacher_ls:
+        from crisp.teachers import LocalPosterior
+        ls = LocalPosterior(xtr, ytr)
+        tq = json.load(open(os.path.join(RESULTS, "teacher_quality.json")))
+        ls.patch_for_sigma = {float(k): v for k, v in tq["patch"].items()}
     ev = build_eval(xte, yte, sd)
     log = dict(config=vars(a), sigma_data=sd, params=sum(p.numel() for p in net.parameters()),
                train_flops_per_sample=fl_step, aux_flops=aux_flops, curve=[])
@@ -122,7 +172,7 @@ def main():
         if flops >= next_eval or flops >= a.budget:
             l, bins = evaluate(ema, ev, sd)
             log["curve"].append(dict(step=step, flops=flops, test_loss=l, bins=bins, wall=time.time() - t0,
-                                     rb_flops=rb.flops if rb else 0.0))
+                                     rb_flops=rb.flops if rb else 0.0, teacher_flops=teacher_flops))
             print(f"step {step} flops {flops:.3e} test {l:.4f} bins {[round(b, 4) if b else None for b in bins]} t {time.time() - t0:.0f}s", flush=True)
             next_eval += eval_every
             if flops >= a.budget:
@@ -136,22 +186,52 @@ def main():
                 target, _ = rb(xt, sigma, idx, y)
         else:
             target = x0
+        mix = a.teacher_mix * (max(0.0, 1.0 - flops / a.teacher_anneal) if a.teacher_anneal > 0 else 1.0)
+        if mix > 0 and (teacher is not None or ls is not None or a.td > 0):
+            with torch.no_grad():
+                if teacher is not None:
+                    tgt = teacher(xt, sigma, y)
+                    teacher_flops += a.batch * fl_teacher
+                elif ls is not None:
+                    before = ls.flops
+                    tgt = ls.denoise(xt, sigma, y, exclude=ls.pos[idx])
+                    teacher_flops += ls.flops - before
+                else:  # TD: re-draw the pair (x_s, x_t) on one forward chain; bootstrap from the less noisy view
+                    s_s = a.td * sigma
+                    xs = x0 + s_s.reshape(-1, 1, 1, 1) * torch.randn(x0.shape, generator=g)
+                    xt = xs + torch.sqrt(sigma ** 2 - s_s ** 2).reshape(-1, 1, 1, 1) * torch.randn(x0.shape, generator=g)
+                    tgt = ema(xs, s_s, y)
+                    tgt = torch.where((s_s < a.td_floor).reshape(-1, 1, 1, 1), x0, tgt)
+                    teacher_flops += a.batch * fl_teacher
+            target = (1 - mix) * target + mix * tgt
+        if a.retrieve or a.patch_retrieve:
+            model.exclude = pos[idx]
         D = model(xt, sigma, y)
+        if a.retrieve or a.aux_input or a.patch_retrieve:
+            model.exclude = None
         per = edm_weight(sigma, sd) * ((D - target) ** 2).mean((1, 2, 3))
         loss = (w * per).mean()
         opt.zero_grad(set_to_none=True)
+        if muon is not None:
+            muon.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+        warm = min(1.0, (step + 1) / 200)
         for pg in opt.param_groups:
-            pg["lr"] = a.lr * min(1.0, (step + 1) / 200)
+            pg["lr"] = a.lr * warm
         opt.step()
+        if muon is not None:
+            for pg in muon.param_groups:
+                pg["lr"] = a.muon_lr * warm
+            muon.step()
         decay = min(a.ema, (1 + step) / (10 + step))
         with torch.no_grad():
             for pe, pm in zip(ema.net.parameters(), net.parameters()):
                 pe.lerp_(pm, 1 - decay)
         sampler.update(sigma, per.detach())
         step += 1
-        flops = aux_flops + step * a.batch * fl_step + (rb.flops if rb else 0.0)
+        flops = (aux_flops + step * a.batch * fl_step + (rb.flops if rb else 0.0) + (teacher_flops if a.count_teacher else 0.0)
+                 + (step * muon.flops_per_step if muon is not None else 0.0))
 
     sig_grid = [0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 20.0, 40.0, 80.0]
     log["mse_profile"] = dict(sigmas=sig_grid, mse=mse_profile(ema, xte, yte, sig_grid))

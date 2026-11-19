@@ -1,0 +1,15 @@
+{"config": {"name": "edm16_b32", "res": 16, "rb": false, "scaffold": false, "ia": false, "budget": 150000000000000.0, "evals": 12, "batch": 64, "lr": 0.001, "base": 32, "ema": 0.999, "seed": 0, "threads": 4, "teacher_net": null, "teacher_ls": false, "td": 0.0, "td_floor": 0.02, "teacher_mix": 1.0, "teacher_anneal": 0.0, "count_teacher": 1, "retrieve": 0, "skip": "scaffold", "opt": "adam", "muon_lr": 0.02, "aux_input": false}, "sigma_data": 0.9721055626869202, "params": 1587619, "train_flops_per_sample": 463618048.0, "aux_flops": 0.0}
+step 0 flops 0.000e+00 test 1.0060 bins [1.0063, 0.9973, 0.999, 1.0133, 1.0559] t 1s
+step 422 flops 1.252e+13 test 0.4099 bins [0.813, 0.5138, 0.3327, 0.2781, 0.4295] t 80s
+step 843 flops 2.501e+13 test 0.3702 bins [0.7511, 0.4697, 0.2965, 0.2441, 0.3915] t 168s
+step 1264 flops 3.750e+13 test 0.3528 bins [0.7206, 0.4486, 0.2819, 0.2297, 0.3784] t 299s
+step 1686 flops 5.003e+13 test 0.3426 bins [0.7033, 0.4364, 0.2736, 0.2226, 0.3636] t 368s
+step 2107 flops 6.252e+13 test 0.3367 bins [0.692, 0.4291, 0.2686, 0.2182, 0.3584] t 436s
+step 2528 flops 7.501e+13 test 0.3326 bins [0.6851, 0.4242, 0.2655, 0.215, 0.3527] t 501s
+step 2949 flops 8.750e+13 test 0.3295 bins [0.6794, 0.4203, 0.2632, 0.2128, 0.3478] t 570s
+step 3371 flops 1.000e+14 test 0.3273 bins [0.6744, 0.4176, 0.2614, 0.211, 0.3472] t 637s
+step 3792 flops 1.125e+14 test 0.3254 bins [0.6706, 0.4153, 0.2599, 0.21, 0.3426] t 704s
+step 4213 flops 1.250e+14 test 0.3240 bins [0.6681, 0.4135, 0.2587, 0.2088, 0.3425] t 771s
+step 4635 flops 1.375e+14 test 0.3225 bins [0.6658, 0.412, 0.2577, 0.2076, 0.3392] t 838s
+step 5056 flops 1.500e+14 test 0.3214 bins [0.6639, 0.4106, 0.2569, 0.2067, 0.3374] t 907s
+done /home/user/Claude-projects/crisp-diffusion/results/runs/edm16_b32

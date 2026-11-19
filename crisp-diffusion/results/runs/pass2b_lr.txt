@@ -1,0 +1,1 @@
+best baseline lr: 0.001

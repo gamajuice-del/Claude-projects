@@ -1,0 +1,21 @@
+/home/user/Claude-projects/crisp-diffusion/scripts/exp_els_quality.py:59: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:820.)
+  mse = lambda D: float(((D - x0) ** 2).sum((1, 2, 3)).mean())
+W=8 sigma  0.01 ELS  128.351 scaffold    0.076 EDM(1.5e14)    0.072
+W=8 sigma  0.05 ELS  128.730 scaffold    1.500 EDM(1.5e14)    1.153
+W=8 sigma  0.10 ELS  127.951 scaffold    4.723 EDM(1.5e14)    3.514
+W=8 sigma  0.20 ELS  128.949 scaffold   13.419 EDM(1.5e14)   10.067
+W=8 sigma  0.35 ELS  129.623 scaffold   28.625 EDM(1.5e14)   22.386
+W=8 sigma  0.50 ELS  130.665 scaffold   44.497 EDM(1.5e14)   36.362
+W=8 sigma  1.00 ELS  146.556 scaffold   90.592 EDM(1.5e14)   82.303
+W=8 sigma  2.00 ELS  186.893 scaffold  160.992 EDM(1.5e14)  161.881
+W=8 sigma  5.00 ELS  302.193 scaffold  296.494 EDM(1.5e14)  328.533
+W=12 sigma  0.01 ELS  185.915 scaffold    0.076 EDM(1.5e14)    0.072
+W=12 sigma  0.05 ELS  185.675 scaffold    1.500 EDM(1.5e14)    1.153
+W=12 sigma  0.10 ELS  185.417 scaffold    4.723 EDM(1.5e14)    3.514
+W=12 sigma  0.20 ELS  186.740 scaffold   13.419 EDM(1.5e14)   10.067
+W=12 sigma  0.35 ELS  188.004 scaffold   28.625 EDM(1.5e14)   22.386
+W=12 sigma  0.50 ELS  188.910 scaffold   44.497 EDM(1.5e14)   36.362
+W=12 sigma  1.00 ELS  199.940 scaffold   90.592 EDM(1.5e14)   82.303
+W=12 sigma  2.00 ELS  229.146 scaffold  160.992 EDM(1.5e14)  161.881
+W=12 sigma  5.00 ELS  322.746 scaffold  296.494 EDM(1.5e14)  328.533

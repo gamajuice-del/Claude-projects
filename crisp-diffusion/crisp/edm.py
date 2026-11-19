@@ -124,3 +124,101 @@ def measure_fwd_flops(model, x, sigma, y):
     with torch.no_grad(), FlopCounterMode(display=False) as fc:
         model(x, sigma, y)
     return fc.get_total_flops() / x.shape[0]
+
+
+class RetrievalDenoiser(Denoiser):
+    """Denoiser with read access to the training set (non-parametric memory + parametric reasoning).
+
+    The k nearest same-class training images to the scaffold-denoised query (or the EDM-skip estimate if no
+    scaffold) are concatenated as input channels, aligned in image coordinates. During training, set
+    `self.exclude` to the pool positions of the generating images (leave-one-out) so the network cannot copy
+    its own target. Distances are computed with matmuls so FlopCounterMode counts the retrieval."""
+
+    def __init__(self, net, sigma_data, scaffold, pools, k=4, skip="scaffold"):
+        super().__init__(net, sigma_data, scaffold)
+        self.skip = skip  # "scaffold": D = D_G + c_out F ; "edm": D = c_skip x + c_out F (scaffold/neighbours only as inputs)
+        self.pools = {c: p.reshape(len(p), -1).contiguous() for c, p in pools.items()}
+        self.sq = {c: (p * p).sum(1) for c, p in self.pools.items()}
+        self.k = k
+        self.exclude = None
+
+    def neighbours(self, q, y):
+        if self.k == 0:
+            return None
+        B = q.shape[0]
+        Q = q.reshape(B, -1)
+        out = torch.empty(B, self.k, Q.shape[1], dtype=q.dtype)
+        for c in torch.unique(y).tolist():
+            rows = (y == c).nonzero(as_tuple=True)[0]
+            P, sq = self.pools[c], self.sq[c]
+            d = sq[None, :] - 2 * Q[rows] @ P.T
+            if self.exclude is not None:
+                d[torch.arange(len(rows)), self.exclude[rows]] = float("inf")
+            nn_idx = d.topk(self.k, dim=1, largest=False).indices
+            out[rows] = P[nn_idx]
+        return out.reshape(B, self.k * q.shape[1], *q.shape[2:])
+
+    def forward(self, x, sigma, y=None):
+        s = sigma.reshape(-1, 1, 1, 1)
+        sd = self.sd
+        c_in = 1 / torch.sqrt(s ** 2 + sd ** 2)
+        c_out = s * sd / torch.sqrt(s ** 2 + sd ** 2)
+        with torch.no_grad():
+            base = self.scaffold(x, sigma, y) if self.scaffold is not None else (sd ** 2 / (s ** 2 + sd ** 2)) * x
+            nb = self.neighbours(base, y)
+        parts = [c_in * x, base / sd] + ([nb / sd] if self.k > 0 else [])
+        out = c_out * self.net(torch.cat(parts, 1), torch.log(sigma) / 4, y)
+        if self.skip == "edm":
+            return (sd ** 2 / (s ** 2 + sd ** 2)) * x + out
+        return base + out
+
+
+class PatchRetrievalDenoiser(RetrievalDenoiser):
+    """Translation-equivariant patch retrieval: for each TxT tile of the query (scaffold estimate), find the k
+    most similar WxW context windows from ANY tile position of any same-class training image (PCA sketch
+    search, exact in the sketch), and paste their central tiles into k aligned 'exemplar mosaics' that are fed
+    to the network.  Leave-one-out: windows from the generating image are excluded during training."""
+
+    def __init__(self, net, sigma_data, scaffold, pools, k=2, skip="edm", T=4, W=8, rank=24, seed=0):
+        torch.nn.Module.__init__(self)
+        self.net, self.sd, self.scaffold, self.k, self.skip, self.exclude = net, sigma_data, scaffold, k, skip, None
+        self.T, self.W, self.pad = T, W, (W - T) // 2
+        C = next(iter(pools.values())).shape[1]
+        self.C = C
+        wins = {c: self._windows(p) for c, p in pools.items()}          # (N, n_pos, C*W*W)
+        sample = torch.cat([w.reshape(-1, w.shape[-1])[::50] for w in wins.values()])
+        self.wmean = sample.mean(0)
+        _, _, V = torch.linalg.svd(sample - self.wmean, full_matrices=False)
+        self.P = V[:rank].T.contiguous()
+        self.db, self.tiles, self.img = {}, {}, {}
+        for c, w in wins.items():
+            N, npos, D = w.shape
+            flat = w.reshape(N * npos, D)
+            self.db[c] = ((flat - self.wmean) @ self.P).contiguous()
+            ww = flat.reshape(N * npos, C, W, W)
+            self.tiles[c] = ww[:, :, self.pad:self.pad + T, self.pad:self.pad + T].contiguous()
+            self.img[c] = torch.arange(N).repeat_interleave(npos)
+
+    def _windows(self, x):
+        xp = torch.nn.functional.pad(x, [self.pad] * 4, mode="reflect")
+        u = torch.nn.functional.unfold(xp, self.W, stride=self.T)          # (N, C*W*W, n_pos)
+        return u.transpose(1, 2).contiguous()
+
+    def neighbours(self, q, y):
+        B, C, H, Wd = q.shape
+        nh, nw = H // self.T, Wd // self.T
+        qs = (self._windows(q) - self.wmean) @ self.P                          # (B, n_pos, r)
+        out = torch.empty(B, self.k, C, H, Wd, dtype=q.dtype)
+        for c in torch.unique(y).tolist():
+            rows = (y == c).nonzero(as_tuple=True)[0]
+            db = self.db[c]
+            Q = qs[rows].reshape(-1, db.shape[1])                              # (b*n_pos, r)
+            d = (db * db).sum(1)[None, :] - 2 * Q @ db.T
+            if self.exclude is not None:
+                ex = self.exclude[rows].repeat_interleave(nh * nw)
+                d = d.masked_fill(self.img[c][None, :] == ex[:, None], float("inf"))
+            nn_idx = d.topk(self.k, dim=1, largest=False).indices                # (b*n_pos, k)
+            t = self.tiles[c][nn_idx]                                           # (b*n_pos, k, C, T, T)
+            t = t.reshape(len(rows), nh, nw, self.k, C, self.T, self.T).permute(0, 3, 4, 1, 5, 2, 6)
+            out[rows] = t.reshape(len(rows), self.k, C, H, Wd)
+        return out.reshape(B, self.k * C, H, Wd)
