@@ -1,0 +1,4 @@
+__pycache__/
+results/runs/*/ema.pt
+results/*.pt
+results/samples_*.npz

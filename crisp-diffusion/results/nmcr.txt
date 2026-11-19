@@ -1,0 +1,4 @@
+detail std 0.15010811388492584 LL std 0.9721055626869202
+accumulated 1024000 train / 128000 val patches in 110s, 2.183e+13 FLOPs
+solved 18 sigmas, total NMCR FLOPs 2.223e+13, 143s
+cnn 1x: {'flops_per_sample': 319045632.0, 'steps': 1088, 'flops': 22215785447424.0, 'seconds': 203.37599182128906}
