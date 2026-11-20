@@ -56,6 +56,20 @@ def _wander(rng, n, p_turn=0.2):
     return np.where(u < p_turn / 2, LEFT, np.where(u < p_turn, RIGHT, FWD))
 
 
+def _ids(world, n):
+    return to_numpy(world.agents["id"][:n]).astype(np.int64)
+
+
+def _state(arr, need, shape_tail, fill):
+    """Grow a per-individual state array (indexed by agent id) to hold `need` ids."""
+    if arr is None or arr.shape[0] < need:
+        new = np.full((max(need, 64) * 2,) + shape_tail, fill, dtype=np.float64)
+        if arr is not None:
+            new[:arr.shape[0]] = arr
+        return new
+    return arr
+
+
 def _blocked_front(world, n, Xv):
     K = world.cfg.K_max
     X = to_numpy(Xv)
@@ -218,8 +232,9 @@ class Learner(Reflex):
     def choose(self, world, n, Xv):
         A = world.agents
         K = world.cfg.K_max
-        if self.v is None or self.v.shape[0] < A.A:
-            self.v = np.full((A.A, K), 0.5)
+        ids = _ids(world, n)
+        self.v = _state(self.v, int(ids.max()) + 1, (K,), 0.5)
+        v = self.v[ids]
         le = to_numpy(world.last_eat)
         if le.shape[0] == n:
             eff = to_numpy(A["eff"][:n])
@@ -227,10 +242,10 @@ class Learner(Reflex):
             amt = le[:, :K]
             ate = amt > 1e-4
             unit = eff[:, :K] * val[None, :]            # experienced energy per unit eaten
-            v = self.v[:n]
             v[ate] += self.rate * (unit[ate] - v[ate])
             v += self.forget * (self.prior - v)          # beliefs fade -> occasional re-tasting
-        w = np.clip(self.v[:n], 0.0, None)              # avoid what is believed harmful
+            self.v[ids] = v
+        w = np.clip(v, 0.0, None)                       # avoid what is believed harmful
         X = to_numpy(Xv).copy()
         X[:, :K, :] *= (w / np.maximum(to_numpy(A["eff"][:n])[:, :K], 1e-6))[:, :, None]
         return super().choose(world, n, world.xp.asarray(X))
@@ -263,8 +278,62 @@ class LearnMemory(Memory):
         return super().__call__(world, n, world.xp.asarray(X))
 
 
+class Cacher(Reflex):
+    """Hoarder with spatial memory. When nearly full and standing on food it
+    picks food up; once carrying enough it drops it underfoot as a cache (hidden
+    beyond range 1) and remembers the place. When hungry and nothing good is in
+    view, it walks to the nearest remembered cache and eats there."""
+    name = "cacher"
+
+    def __init__(self, full=0.8, hungry=0.4, max_caches=12, **kw):
+        super().__init__(**kw)
+        self.full, self.hungry, self.M = full, hungry, max_caches
+        self.caches = None
+
+    def __call__(self, world, n, Xv):
+        A, cfg = world.agents, world.cfg
+        H, W = cfg.H, cfg.W
+        ids = _ids(world, n)
+        self.caches = _state(self.caches, int(ids.max()) + 1, (self.M, 2), -1)
+        a, bval = self.choose(world, n, Xv)
+        pos = to_numpy(A["pos"][:n])
+        hd = to_numpy(A["heading"][:n])
+        size = to_numpy(A["size"][:n])
+        cap = max(getattr(cfg, "energy_cap", 0.0), 1e-9) * size
+        frac = to_numpy(A["energy"][:n]) / cap
+        carry = to_numpy(A["carry"][:n]).sum(1)
+        own = food_value(world, n, Xv)[:, CENTER_P]
+        C = self.caches[ids]
+        # forget caches that are found empty when standing on them
+        here = (C[:, :, 0] == pos[:, None, 0]) & (C[:, :, 1] == pos[:, None, 1])
+        empty_here = here & (own[:, None] < 0.02)
+        C[empty_here] = -1
+        pick = (frac > self.full) & (own > 0.05) & (carry < 0.8 * cfg.carry_cap * size)
+        drop = (carry >= 0.4 * cfg.carry_cap * size) & ~pick
+        # remember a new cache where we drop
+        for i in np.nonzero(drop)[0]:
+            slot = np.nonzero(C[i, :, 0] < 0)[0]
+            if slot.size:
+                C[i, slot[0]] = pos[i]
+        # hungry and nothing worthwhile visible -> go to nearest cache
+        hungry = (frac < self.hungry) & (bval < 0.2) & (own < 0.05)
+        dy = (C[:, :, 0] - pos[:, None, 0] + H / 2) % H - H / 2
+        dx = (C[:, :, 1] - pos[:, None, 1] + W / 2) % W - W / 2
+        dist = np.where(C[:, :, 0] >= 0, np.abs(dy) + np.abs(dx), 1e9)
+        k = dist.argmin(1)
+        has = dist[np.arange(n), k] < 1e9
+        f = dy[np.arange(n), k] * F_DIR[hd, 0] + dx[np.arange(n), k] * F_DIR[hd, 1]
+        s = dy[np.arange(n), k] * R_DIR[hd, 0] + dx[np.arange(n), k] * R_DIR[hd, 1]
+        nav = steer(f, s, _blocked_front(world, n, Xv))
+        from .config import DROP, PICK
+        a = np.where(pick, PICK, np.where(drop, DROP, np.where(hungry & has, nav, a)))
+        a = np.where(a < 0, _wander(self.rng, n), a)
+        self.caches[ids] = C
+        return world.xp.asarray(a)
+
+
 LADDER = {"random": Random, "taste": Taste, "reflex": Reflex, "persist": Persist, "memory": Memory,
-          "learner": Learner, "learnmemory": LearnMemory}
+          "learner": Learner, "learnmemory": LearnMemory, "cacher": Cacher}
 
 
 def evaluate(cfg, policy, n_agents=500, settle=500, measure=500, seed=0, physics=None,
@@ -321,15 +390,43 @@ class Mixed:
 
     def __call__(self, world, n, Xv):
         a = np.full(n, -1, np.int64)
+        groups = (to_numpy(world.agents["tag"][:n]) if self.groups is None else self.groups[:n])
         for gi, p in enumerate(self.policies):
-            m = self.groups[:n] == gi
+            m = groups == gi
             if m.any() and not isinstance(p, Brain):
                 a[m] = to_numpy(p(world, n, Xv))[m]
         return world.xp.asarray(a)
 
 
+def survival(cfg, resident, invader, frac=0.5, n_agents=500, steps=2400, seed=0,
+             physics=None, energy=4.0):
+    """Mixed population, deaths on, no births or immigration: fraction of each
+    group still alive after `steps` (e.g. through a winter)."""
+    import copy
+    from .world import World
+    c = cfg.replace(init_agents=0, immigration=False, repro=False, deaths=True, seed=seed)
+    w = World(c, physics=copy.deepcopy(physics) if physics else None, populate=False)
+    w.refresh_masks()
+    g = w.random_genomes(n_agents)
+    g[:, w.lay.gs["max_age"].start] = 10.0       # only starvation should kill in this test
+    g[:, w.lay.gs["size"].start] = 0.0           # equal bodies in both groups
+    rng = np.random.default_rng(seed + 1)
+    tags = (rng.random(n_agents) < frac).astype(np.int32)
+    w.spawn(g, energy=energy)
+    w.agents["tag"][:n_agents] = w.xp.asarray(tags)
+    w.policy = Mixed([resident, invader], None)
+    for _ in range(steps):
+        w.step()
+        if w.agents.n == 0:
+            break
+    alive = to_numpy(w.agents["tag"][:w.agents.n])
+    s_res = float((alive == 0).sum() / max((tags == 0).sum(), 1))
+    s_inv = float((alive == 1).sum() / max((tags == 1).sum(), 1))
+    return dict(resident=s_res, invader=s_inv, diff=s_inv - s_res)
+
+
 def invasion(cfg, resident, invader, frac=0.2, n_agents=500, settle=400, measure=600,
-             seed=0, physics=None, genomes=None, energy=3.0):
+             seed=0, physics=None, genomes=None, energy=3.0, clamp=True):
     """Relative intake of a minority strategy (invader) in a population of
     residents: >1 means the world pays for the invader's extra faculty. This is
     the selection gradient a rare mutant climbing one rung would feel."""
@@ -349,12 +446,16 @@ def invasion(cfg, resident, invader, frac=0.2, n_agents=500, settle=400, measure
     w.policy = Mixed([resident, invader], groups)
     K = c.K_max
     tot = np.zeros(w.agents.A)
+    reserve = np.zeros(w.agents.A)
     for t in range(settle + measure):
         w.step()
         A = w.agents
-        d = energy - A["energy"][:A.n]   # hold bodies at the residents' typical energy
-        A["energy"][:A.n] += d
-        A["prev_energy"][:A.n] += d
+        if clamp:
+            d = energy - A["energy"][:A.n]   # hold bodies at the residents' typical energy
+            A["energy"][:A.n] += d
+            A["prev_energy"][:A.n] += d
+        elif t >= settle:                    # unclamped: score the energy reserve over time
+            reserve[:A.n] += to_numpy(A["energy"][:A.n])
         if t >= settle:   # realised energy, including the sign of toxic food
             le = to_numpy(w.last_eat)
             eff = to_numpy(A["eff"][:A.n])
@@ -362,5 +463,8 @@ def invasion(cfg, resident, invader, frac=0.2, n_agents=500, settle=400, measure
             tot[:A.n] += (eff[:, :K] * val[None, :] * le[:, :K]).sum(1) + eff[:, K] * le[:, K]
     n = w.agents.n
     g = groups[:n]
+    if not clamp:   # mean energy reserve (can be negative: starvation debt)
+        inv, res = reserve[:n][g == 1].mean() / measure, reserve[:n][g == 0].mean() / measure
+        return dict(invader=inv, resident=res, ratio=inv / max(abs(res), 1e-9), diff=inv - res)
     inv, res = tot[:n][g == 1].mean() / measure, tot[:n][g == 0].mean() / measure
     return dict(invader=inv, resident=res, ratio=inv / max(res, 1e-9))

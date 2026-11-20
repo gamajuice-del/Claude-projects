@@ -229,7 +229,8 @@ class World:
             x, y, z = self.climate
             amp_c = 0.5 + 0.5 * np.clip((z - 5.0) / 40.0, 0.0, 1.0)
             season = math.sin(2 * math.pi * self.t / cfg.season_period)
-            lat = np.cos(2 * np.pi * (np.arange(H) + 0.5) / H)
+            lat = (np.ones(H) if getattr(cfg, "season_global", False)
+                   else np.cos(2 * np.pi * (np.arange(H) + 0.5) / H))
             light = np.clip(0.55 + cfg.season_amp * amp_c * season * lat, 0.05, 1.0)
             self.light = xp.asarray(light.astype(np.float32))[:, None]
             self.is_night = (not self.force_day) and \
@@ -301,6 +302,8 @@ class World:
         rows = decode_globals(xp, self.lay, genomes, self.physics.k_active)
         rows.update(develop(xp, self.rng_dev, self.lay, genomes, self.physics))
         en = xp.full(b, energy, np.float32) if np.isscalar(energy) else energy[:b]
+        if getattr(cfg, "energy_cap", 0.0) > 0:
+            en = xp.minimum(en, cfg.energy_cap * rows["size"]).astype(np.float32)
         rows.update(
             genome=genomes, pos=positions[:b],
             heading=(self.rng_dev.integers(0, 4, b).astype(np.int32)
@@ -750,6 +753,8 @@ class World:
         e_par = energy[ci]
         invest = A["invest"][ci] * e_par
         invest = xp.minimum(invest, e_par - 0.05 - struct - cfg.birth_overhead)
+        if getattr(cfg, "energy_cap", 0.0) > 0:      # a child cannot hold more than its capacity
+            invest = xp.minimum(invest, cfg.energy_cap * ph["size"])
         ok = invest >= 0.2
         if not bool(ok.any()):
             return None
@@ -809,6 +814,11 @@ class World:
         health += need
         energy -= need
         heat += fsum(need)
+        cap = getattr(cfg, "energy_cap", 0.0)
+        if cap > 0:            # limited fat storage: energy above capacity is lost as heat
+            over = xp.maximum(energy - cap * size, 0.0)
+            energy -= over
+            heat += fsum(over)
         A["age"][:n] += 1
         A["dE"][:n] = energy - A["prev_energy"][:n]
         A["prev_energy"][:n] = energy

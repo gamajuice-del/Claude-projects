@@ -29,11 +29,12 @@ class Simulation:
                  iff: InvasionScreen | None = None, log_every: int = 250,
                  activity_every: int = 100, archive_every: int = 5000,
                  migrate_dir: str | None = None, migrate_every: int = 2000,
-                 n_migrants: int = 8, island_id: int = 0, verbose: bool = True):
+                 n_migrants: int = 8, island_id: int = 0, verbose: bool = True,
+                 world: World | None = None):
         self.cfg = cfg
         self.ctx = device_context(cfg.device)
         with self.ctx:
-            self.world = World(cfg)
+            self.world = world if world is not None else World(cfg)   # resume or fresh
         self.out_dir = out_dir
         self.unfold_mode, self.unfold_every = unfold_mode, unfold_every
         self.iff = iff

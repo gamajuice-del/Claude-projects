@@ -291,3 +291,23 @@ def test_salience_learning_tracks_value_sign():
     F = np.asarray(w.agents["sal_F"][0])
     K = cfg.K_max
     assert F[0] > 0 and np.all(F[K + 2:] == 0)
+
+
+def test_energy_cap_conserves_and_binds():
+    w = World(small(energy_cap=2.0))
+    for _ in range(300):
+        w.step()
+        A = w.agents
+        e, sz = np.asarray(A["energy"][:A.n]), np.asarray(A["size"][:A.n])
+        assert np.all(e <= 2.0 * sz + 1e-4)
+    assert abs(w.ledger_error()) / w.total_energy() < 2e-4
+
+
+def test_free_reversal_runs():
+    from noogenesis.assays import free_reversal
+    w = World(small(sal_learning=True))
+    for _ in range(20):
+        w.step()
+    g = np.asarray(w.agents["genome"][:4])
+    r = free_reversal(g, w.cfg, w.physics, blocks=4, block_steps=15, items=3)
+    assert len(r["curve"]) == 4 and 0.0 <= r["eating_frac"] <= 1.0

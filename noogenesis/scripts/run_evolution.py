@@ -51,6 +51,7 @@ def main():
     ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
                     help="override any Config field, e.g. --set rf_mode=gaussian sigma_init=-1.5")
     ap.add_argument("--archive-every", type=int, default=5000)
+    ap.add_argument("--resume", default=None, help="continue from a saved world_final.pkl")
     a = ap.parse_args()
 
     cfg = Config(H=a.H, W=a.W, max_agents=a.max_agents, init_agents=a.init_agents,
@@ -76,9 +77,16 @@ def main():
             with open(os.path.join(a.out, "allocation.json"), "w") as f:
                 json.dump(arch.alloc_history, f)
         return
+    world = None
+    if a.resume:
+        import pickle
+        world = pickle.load(open(a.resume, "rb"))
+        if over:                     # allow changing physics knobs on resume
+            world.cfg = world.cfg.replace(**over)
+        cfg = world.cfg
     sim = Simulation(cfg, out_dir=a.out, unfold_mode=a.unfold, unfold_every=a.unfold_every,
                      iff=iff, log_every=a.log_every, migrate_dir=a.migrate_dir,
-                     island_id=a.island_id, archive_every=a.archive_every)
+                     island_id=a.island_id, archive_every=a.archive_every, world=world)
     sim.run(a.steps)
     if a.out:
         sim.welfare.dump(os.path.join(a.out, "welfare.json"))

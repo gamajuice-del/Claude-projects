@@ -226,3 +226,52 @@ def battery(genomes, cfg, physics, seed=0, quick=False):
     res["reversal_knockout"] = rk
     res["plasticity_gain"] = float(rl["late_acc"] - rk["late_acc"])
     return res
+
+
+def free_reversal(genomes, cfg, physics, blocks=10, block_steps=60, items=6, bad=-0.5,
+                  seed=0, plastic=True):
+    """Free-foraging reversal learning. Each block the chamber is restocked with
+    `items` cells of each of two food species at random places; one species is
+    nutritious (+1) and the other harmful (`bad`). The contingency reverses after
+    half the blocks. The subject lives through all blocks (position and memory
+    persist). Score per block: fraction of food eaten that was the nutritious
+    species. Counterbalanced over which species starts good."""
+    curves, counts = [], []
+    half = blocks // 2
+    for good_first in (0, 1):
+        cw = ChamberWorld(genomes, cfg, physics, seed=seed + 11 * good_first, plastic=plastic)
+        rng = np.random.default_rng(seed + 101 + good_first)
+        m, cs = cw.m, 13
+        sel = np.full((blocks, m), np.nan)
+        for b in range(blocks):
+            good = good_first if b < half else 1 - good_first
+            val = np.zeros(cfg.K_max, np.float32)
+            val[good], val[1 - good] = 1.0, bad
+            cw.w.species_value = cw.xp.asarray(val)
+            cw.clear_food()
+            A = cw.w.agents
+            A["energy"][:m] = 4.0
+            A["prev_energy"][:m] = 4.0
+            for sp in (0, 1):
+                for _ in range(items):
+                    rel = rng.integers(-4, 5, size=(m, 2))
+                    y, x = cw.cells(rel)
+                    cw.w.veg[sp, y, x] = 1.0
+            g_amt = np.zeros(m)
+            b_amt = np.zeros(m)
+            for _ in range(block_steps):
+                cw.step()
+                le = to_numpy(cw.w.last_eat[:m, :2])
+                g_amt += le[:, good]
+                b_amt += le[:, 1 - good]
+            tot = g_amt + b_amt
+            sel[b, tot > 0.05] = (g_amt / np.maximum(tot, 1e-9))[tot > 0.05]
+            counts.append(float((tot > 0.05).mean()))
+        curves.append(sel)
+    S = np.concatenate(curves, 1)
+    curve = np.nanmean(S, 1)
+    return dict(curve=[float(c) for c in curve], eating_frac=float(np.mean(counts)),
+                phase1_gain=float(np.nanmean(S[half - 2:half]) - np.nanmean(S[0])),
+                reversal_gain=float(np.nanmean(S[blocks - 2:]) - np.nanmean(S[half])),
+                late=float(np.nanmean(np.concatenate([S[half - 2:half], S[blocks - 2:]]))),
+                first_after_reversal=float(np.nanmean(S[half])))

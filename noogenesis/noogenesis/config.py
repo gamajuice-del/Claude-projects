@@ -127,6 +127,9 @@ class Config:
     day_period: int = 120
     season_period: int = 2400
     season_amp: float = 0.45
+    season_global: bool = False  # True: one global winter; False: hemispheres are opposite
+    energy_cap: float = 0.0      # >0: body energy capacity = energy_cap * size (fat storage
+                                 # is limited); food eaten beyond it is wasted as heat
     climate_dt: float = 0.0002   # Lorenz time per step (~1 unit / 5000 steps)
     hotspot_speed: float = 0.02  # cells per step
 
