@@ -41,6 +41,8 @@ class GenomeLayout:
             g_fields += [("arc_eta", 1), ("arc_dE", 1), ("arc_mod", 1), ("arc_trace", 1)]
         if getattr(cfg, "tectum", False):     # what is salient, and how sharp the competition
             g_fields += [("sal_w", C), ("sal_beta", 1)]
+            if getattr(cfg, "reflex_arcs", False):   # tectum -> action logits, one gene per pair
+                g_fields += [("tec_arc", 5 * NA)]
         t_fields = [
             ("count", 1), ("q", cfg.d_aff), ("k", cfg.d_aff), ("w_scale", 1),
             ("bias", 1), ("alpha", 1), ("dev_noise", 1), ("eta", 1),
@@ -95,6 +97,9 @@ class GenomeLayout:
         if "sal_w" in self.gs:
             for c in dead_ch:
                 m[self.gs["sal_w"].start + c] = False
+        if "tec_arc" in self.gs and not physics.building:
+            for i in range(5):
+                m[self.gs["tec_arc"].start + i * NA + BUILD] = False
         so = self.ts["in_other"].start
         oo = self.ts["out"].start
         for g in range(cfg.G_max):
@@ -142,6 +147,8 @@ def random_genomes(xp, rng, lay: GenomeLayout, n: int, mutable=None):
     if "sal_w" in lay.gs:
         G(g, "sal_w")[:] *= 0.5
         G(g, "sal_beta")[:] = 1.0 + 0.3 * G(g, "sal_beta")
+    if "tec_arc" in lay.gs:
+        G(g, "tec_arc")[:] *= 0.3
 
     T = lay.types(g)
     ts = lay.ts
@@ -188,7 +195,8 @@ def decode_globals(xp, lay: GenomeLayout, g, k_active: int):
         color=xp.tanh(G("color")).astype(xp.float32),
         compat=(0.05 + 0.5 * sg(G("compat")[:, 0])).astype(xp.float32),
         eta_pred=(0.05 * sg(G("eta_pred")[:, 0])).astype(xp.float32),
-        temp=xp.exp(xp.clip(G("temp")[:, 0], -3, 2)).astype(xp.float32),
+        temp=xp.maximum(getattr(cfg, "temp_min", 0.0),
+                        xp.exp(xp.clip(G("temp")[:, 0], -3, 2))).astype(xp.float32),
         epi_rho=sg(G("epi_rho")[:, 0]).astype(xp.float32),
         share=(0.05 + 0.45 * sg(G("share")[:, 0])).astype(xp.float32),
     )

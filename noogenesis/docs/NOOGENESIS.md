@@ -158,7 +158,16 @@ p_b, the expected waiting time in generations is approximately
 
   T ≈ 1/(2 N μ p_b s)  [origin]  +  (2/s) ln N  [fixation],
 
-and wall-clock time is T × (steps per generation) / (steps per second). Every accelerator
+and wall-clock time is T × (steps per generation) / (steps per second).
+
+*Refinement from the prototype (`RESULTS.md` §7).* The beneficial fraction p_b must be
+non-negligible **for the first partial step** of a faculty, not merely for the faculty as
+a whole. Perception paid ≥ 40% in our world, yet evolution never found it until a single
+mutation could produce a first, partial version (tectal reflex arcs): 3/4 seeds versus
+≤ 1/28, p = 0.003. *Mutational accessibility of first steps* is a property of the
+developmental program, and it is the main thing a "Cambrian start" must supply.
+
+Every accelerator
 in Section 6 maps onto one factor of this expression: N (parallelism), μ·p_b (genomic
 bottleneck, duplication-divergence, invasion screening), s (cognitive niche window,
 variance reduction), steps per generation (lifespans tuned to learning time), steps per
@@ -381,6 +390,16 @@ unbounded reals decoded by smooth squashing functions, so every mutant is viable
    visual field); neurons are noisy mixtures of their type's motifs.
 4. **Output repertoire** is fixed at development: actions and channels that did not exist
    when the organism was born stay unavailable to it (needed for conservative unfolding).
+5. **The "Cambrian" body plan** (default since Round 2), all with genetic content:
+   *bilateral* development (neurons of each type form mirror pairs whose receptive fields,
+   sound inputs, efference copy and turn outputs are mirrored, so one mutation builds left
+   and right steering together; exact symmetry is tested); an *optic tectum* (a retinotopic
+   salience map, with salience = an evolved weighting of visual channels and a
+   winner-take-all of evolved sharpness, reporting the attended location, its salience
+   and the salience underfoot); and *reflex arcs* (direct receptive-field→action and
+   tectum→action genes, like monosynaptic sensorimotor pathways). Optional, off by default:
+   three-factor dopamine-gated learning on the arcs (eligibility × reward-prediction
+   error); Gaussian receptive fields; Weber-law receptors; a behavioural-noise floor.
 
 ### 4.3 Dynamics, plasticity, neuromodulation and the predictive substrate
 
@@ -406,6 +425,10 @@ axiom.
 
 ### 4.4 Variation and inheritance
 
+* **Physiological budding** (default since Round 2): an organism buds when its energy
+  exceeds its genetic threshold; the "reproduce" action now only means *mate*. This
+  removed a decision that diluted selection on foraging and doubled generation turnover
+  (3/3 seeds moved past the blind-taster rung).
 * Point mutations with self-adaptive step size (log-normal update of the σ gene, as in
   evolution strategies), per-locus probability 0.08.
 * **Duplication–divergence** (Ohno): with p = 0.02 per birth an active module is copied
@@ -607,6 +630,8 @@ noogenesis/
                     metabolism, ledger, compaction, lesions, cloning
     unfolding.py    physics ladder, Bedau–Packard activity, stagnation detector
     accelerate.py   invasion screening (IFS), Lenski-style relative fitness
+    oracles.py      oracle ladder (random, taste, reflex, memory) and invasion harness:
+                    measures what the world pays for each faculty
     archipelago.py  UCB-allocated islands with migration
     sim.py          driver: logging, archives, file-based multi-process migration
     metrics.py      integration/complexity/Φ-proxy, communication, lesions, common garden
@@ -617,6 +642,9 @@ noogenesis/
             analyze.py         trajectories, epoch assays, competition, Stage-2 probes
             ecology_lesion.py  does this ecology pay for vision / memory? (multi-seed)
             validate_iff.py    replicate check for invasion screening
+            ladder_probe.py     place archived populations on the oracle ladder
+            capacity_probe.py  directed-selection diagnostic of the genotype->brain map
+            perception_check.py  lesion + ladder summary of final worlds
             final_state_metrics.py, addendum.py, merge_results.py, benchmark.py
   tests/    test_core.py (17 tests)
 ```
@@ -815,6 +843,17 @@ deprivation and is ecologically plausible; a cap on chronic-deprivation time per
     and the first lesson showed no symbol learning (100 subjects, p ≥ 0.56 vs controls).
     By the L0 criterion Stage 2 should not start yet. An early small-sample "positive"
     result did not replicate. Instruments that can say no are the point.
+11. **Round 2: the perception barrier.** An oracle ladder (§10.1, `oracles.py`) showed the
+    world pays heavily for perception (a reflex perceiver beats a blind taster 3.8×).
+    A linear readout of vision clones that perceiver at 0.96 of its intake, so it is
+    representable. Yet nine interventions failed to make it evolve (encodings,
+    bilateral, tectum as input, arcs, learning, noise floor, …). What worked was making
+    the *first step* a single mutation: tectal reflex arcs (3/4 seeds vs ≤ 1/28). See the
+    refinement of Proposition 5 and `RESULTS.md` §7.
+12. **Instrument bugs are findings too.** Homogeneous-population comparisons are
+    meaningless at fixed density (the invasion test replaced them). A lesion silenced
+    the eyes but not the tectum. A harness clamped energy at a level that penalised
+    hunger-gated foragers. Each would have produced a confident wrong conclusion.
 
 ### 13.3 Biggest open risks
 

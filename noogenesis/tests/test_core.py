@@ -236,3 +236,21 @@ def test_bilateral_brain_is_mirror_symmetric(rf_mode, tectum, arcs):
     assert np.allclose(out[:, RIGHT], outm[:, LEFT], atol=1e-4)
     keep = [i for i in range(out.shape[1]) if i not in (LEFT, RIGHT)]
     assert np.allclose(out[:, keep], outm[:, keep], atol=1e-4)
+
+
+def test_invasion_harness_is_fair():
+    """Identical strategies must score ~1 against each other."""
+    from noogenesis.oracles import Taste, invasion
+    r = invasion(small(), Taste(seed=1), Taste(seed=2), n_agents=150, settle=50, measure=150)
+    assert 0.7 < r["ratio"] < 1.4, r
+
+
+def test_vision_lesion_silences_tectum():
+    w = World(small(tectum=True))
+    for _ in range(5):
+        w.step()
+    seen = []
+    w.hook = lambda wd, n, Ne, Xv, Xo, h, out: seen.append((float(abs(Xv).sum()), float(abs(Xo[:, -5:]).sum())))
+    w.lesion = "vision"
+    w.step()
+    assert seen and seen[0] == (0.0, 0.0)

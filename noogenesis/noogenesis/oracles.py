@@ -228,7 +228,7 @@ class Mixed:
 
 
 def invasion(cfg, resident, invader, frac=0.2, n_agents=500, settle=400, measure=600,
-             seed=0, physics=None, genomes=None):
+             seed=0, physics=None, genomes=None, energy=3.0):
     """Relative intake of a minority strategy (invader) in a population of
     residents: >1 means the world pays for the invader's extra faculty. This is
     the selection gradient a rare mutant climbing one rung would feel."""
@@ -242,7 +242,7 @@ def invasion(cfg, resident, invader, frac=0.2, n_agents=500, settle=400, measure
     else:
         r0 = np.random.default_rng(seed)
         g = w.xp.asarray(genomes[r0.integers(0, len(genomes), n_agents)].astype(np.float32))
-    w.spawn(g, energy=3.0)
+    w.spawn(g, energy=energy)
     rng = np.random.default_rng(seed + 1)
     groups = (rng.random(w.agents.A) < frac).astype(int)
     w.policy = Mixed([resident, invader], groups)
@@ -251,7 +251,7 @@ def invasion(cfg, resident, invader, frac=0.2, n_agents=500, settle=400, measure
     for t in range(settle + measure):
         w.step()
         A = w.agents
-        d = 3.0 - A["energy"][:A.n]
+        d = energy - A["energy"][:A.n]   # hold bodies at the residents' typical energy
         A["energy"][:A.n] += d
         A["prev_energy"][:A.n] += d
         if t >= settle:

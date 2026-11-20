@@ -1,4 +1,11 @@
-# Results from the prototype (CPU, first runs)
+# Results from the prototype (CPU)
+
+> **Latest (Round 2, §7):** the first *perception-driven* foragers have evolved. Without
+> tectal reflex arcs, no population in ~28 runs relied on vision. With them, 3 of 4 seeds
+> did (blinding cuts food intake by 29–90%; Fisher p = 0.003). The diagnosis behind this,
+> and every intervention that did *not* work, are in §7. Round 1 (§1–6) is kept as it was.
+
+## Round 1 (first runs)
 
 **Bottom line.** The engine is correct and fast enough to support real evolution on a
 laptop-class CPU. In ~400 generations it reliably produced *progressive* adaptation and
@@ -214,3 +221,140 @@ and stronger diversity maintenance (larger worlds; archipelago migration).
    caught by checks built for the purpose: replicate correlation and activity statistics.
 5. **Welfare load is low** at this stage, and nothing approaching the sentience-indicator
    thresholds has appeared.
+
+
+---
+
+## 7. Round 2: the perception barrier, diagnosed and (partly) broken
+
+Round 1 left a puzzle. Organisms evolved internal rhythm generators and never used their
+eyes. This round asked *why*, using new instruments built for the purpose. Data:
+`round2.json`. Code: `noogenesis/oracles.py`, `scripts/{ladder_probe,capacity_probe,perception_check}.py`.
+
+### 7.1 Instrument: the oracle ladder
+
+Hand-written strategies at successive cognitive levels are used **only to measure the
+world**, never inside evolution: *random*; *taste* (blind, but keeps eating while bites
+pay); *reflex* (sees its 5×5 patch, eats when the ground is good, otherwise steers to the
+best visible food); *memory* (reflex plus a remembered food location).
+
+* A first attempt compared homogeneous populations. It was wrong: at fixed density all
+  food that grows gets eaten by *someone*, so per-capita intake ≈ productivity / N
+  regardless of strategy (reflex even scored *below* random). Selection acts on relative
+  success, so the instrument is an **invasion test**: 20% of agents follow strategy X
+  amid residents following strategy Y. The harness passes its own sanity checks:
+  identical strategies score 1.0.
+* What the default world pays (invader / resident intake): taste over random **2.6×**,
+  reflex over taste **3.8×**, memory over reflex 0.88× (this memory oracle doesn't pay as
+  built).
+* Where evolved brains sit: random organisms are out-eaten 1.7–2.8× by them, but a blind
+  taster would beat them 1.2–1.9× and a reflex perceiver 2.6–5.5×.
+
+**So the world pays heavily for perception, and evolution was not finding it.**
+
+### 7.2 Diagnosis: representation is fine; mutational accessibility is not
+
+* **Representable.** A linear softmax readout of the raw visual patch, fitted to the
+  reflex oracle's decisions (diagnostic behaviour cloning), imitates it with 82% accuracy
+  and achieves **0.96 of its intake**. A near-optimal perceptual forager is a *linear*
+  function of what organisms already see.
+* **Directed search is slow too.** Truncation selection on intake, with no ecological
+  noise (`capacity_probe.py`), reaches only 0.2–0.45 of the oracle after 40 generations,
+  for every genome variant tried. The problem is search, not selection noise alone.
+* **A large, unexploited gradient.** A single rule, "bite only if there is food
+  underfoot", beats the evolved brains by **1.4×**. A selection coefficient that large
+  would sweep at once, so the variant was simply not arising: under this genotype→brain
+  map, perception needs several loci to change *together* (what a neuron attends to,
+  where it looks, and which action it drives).
+
+### 7.3 What did *not* make perception evolve
+
+Each was tested in directed probes (2 seeds where noted) and/or natural evolution.
+
+| Intervention | Rationale | Result |
+|---|---|---|
+| Gaussian receptive fields (centre, width) | 3 genes instead of 25 per field | no change (probe 0.30–0.32; natural evolution same ladder position) |
+| Larger initial mutation step | faster exploration | no change |
+| Bilateral mirror-pair development | one mutation builds left *and* right steering | 0.44 in one seed, 0.20 in the other: within seed noise |
+| Weber-law (log) food receptors | expand small food differences | no change (0.20–0.29) |
+| Optic tectum as brain input | salience map + winner-take-all gives "where is the best item" | no change in probes or in 150k-step evolution |
+| Reflex arcs (receptive field → action) | linear sensorimotor path, like the clone | no change (0.21–0.33) |
+| Three-factor learning on arcs (dopamine-gated, RPE) | Baldwin effect | learning is causal (inverting the value sign makes organisms stop eating) but weak: +20–70% within life, far below the oracle |
+| Behavioural-noise floor (min. temperature 0.3, 0.6) | keep the landscape graded | worse foraging, vision still unused |
+| Hand-wired perceptual brains (3 designs) | test representability directly | ≤ 0.36 of oracle; sum-pooled fields are swamped by speckled grass, and soft steering dithers |
+
+### 7.4 What worked
+
+**Physiological budding (3/3 seeds).** Reproduction triggered by energy above a genetic
+threshold, rather than by choosing a "reproduce" action, removes a decision that diluted
+selection on foraging and doubles generation turnover. At 40k steps, evolved foragers
+moved past the blind taster in every seed:
+
+| | Taste invading brains | Reflex invading brains | Random invading brains |
+|---|---|---|---|
+| Budding (seeds 1/2/3) | 0.93 / 0.86 / 0.74 | 3.1 / 3.3 / 3.0 | 0.30 / 0.29 / 0.27 |
+| Chosen reproduction | 1.79 / 1.77 / 1.39 | 5.8 / 5.8 / 5.1 | 0.57 / 0.54 / 0.45 |
+
+But these were still rhythm generators (blinding: 0.97–1.10; removing internal state:
+down to 0.20).
+
+**Tectal reflex arcs (3/4 seeds).** The tectum's five outputs (attended location f\*, s\*;
+attended salience; salience underfoot; their difference) get *direct* genetic arcs to the
+action logits, mirrored under bilateral development. "Bite when the ground is salient" is
+now one gene, and so is "turn toward the salient side". What is salient is itself evolved
+(one weight per visual channel). Founders start random; nothing is pre-wired.
+
+| Seed | Steps | Intake after blinding | Intake after reflex-only lesion | Taste invading brains | Reflex invading brains |
+|---|---|---|---|---|---|
+| 1 | 60k | 1.03 | **0.09** (rhythm generator) | 0.67 | 2.9 |
+| 2 | 60k | **0.35** | 1.13 | 0.66 | 2.7 |
+| 3 | 80k | **0.71** | 1.06 | 0.79 | 2.8 |
+| 4 | 80k | **0.10** | 0.33 | 6.8 † | 2.0 |
+
+Without tectal arcs: ≤ 1 borderline case (0.74) in ~28 runs, including four 150k-step
+runs (400–870 generations; blinding 0.97–1.10). **Fisher exact p = 0.003.**
+
+The behaviour shows real perception, not just a lesion effect (seeds 2 and 4):
+- eating became food-gated: bite rate 60–67% when food is underfoot, 14–26% when the
+  ground is empty, versus ~50% regardless in rhythm-generator populations;
+- organisms turn away from bodies ahead 55–70% of the time (collision avoidance).
+
+In seed 2, vision use was already strong at 20k steps (blinded intake 0.29) and
+persisted. It found the single-mutation route predicted in §7.2, with a twist: food
+became *negatively* salient and the underfoot→eat arc went negative, so the two signs
+combine into "eat when food is underfoot". Seed 4 evolved sharp, food-positive attention
+(winner-take-all sharpness 17).
+
+† Seed 4 is a poor forager in the competition harness even when bodies are held at its
+own median energy, and its genetic diversity collapsed to ≈0. It may be specialised to its
+own depleted world. Vision dependence and foraging quality are different things, and this
+lineage has the first without the second.
+
+### 7.5 Changes adopted
+
+The default body plan is now the **"Cambrian" plan**: physiological budding, bilateral
+mirror-pair development, an optic tectum, and reflex arcs (receptive-field and tectal).
+All are developmental structure; their *content* is genetic. Arc learning, Gaussian
+fields, Weber receptors and the noise floor stay available as options, off by default.
+
+Two instrument bugs were found and fixed in this round:
+- the vision lesion did not silence the tectum (its outputs were computed before the
+  lesion);
+- the competition harness clamped every body's energy at 3.0, which penalises
+  hunger-gated foragers. It now uses the residents' median energy.
+
+### 7.6 What this means
+
+1. **Mutational accessibility, not payoff and not representability, was the barrier to
+   perception.** A faculty the world rewards by 40% or more still won't evolve if no
+   single mutation produces a first, partial version of it. This sharpens Proposition 5:
+   p_b (the beneficial fraction of mutations) must be non-negligible *for the specific
+   first step*, which is a property of the developmental program.
+2. Biology's answer is conserved, pre-structured circuitry (tectum, reflex arcs, bilateral
+   symmetry) whose *content* evolves. Giving the founders such a body plan is the
+   "Cambrian start" of the design document taken seriously.
+3. **Next rungs.** Perception is the floor for everything else. Next comes making the world
+   pay for working memory (night and deep night, hidden caches) and for lifetime learning
+   (food quality that changes within a lifetime), with the oracle ladder used to verify
+   *before* evolving that each rung pays, and to check that its first step is reachable by
+   one mutation.

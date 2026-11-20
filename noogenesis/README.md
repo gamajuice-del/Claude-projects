@@ -37,7 +37,18 @@ own: nothing in it rewards intelligence. Organisms just try to stay alive and re
    controls and a privileged-access test separate evidence from imitation. Welfare
    tripwires in the code can halt a run.
 
-## Status (first CPU runs; details in `docs/RESULTS.md`)
+## Status (details in `docs/RESULTS.md`)
+
+**Round 2.** The first *perception-driven* foragers have evolved. The oracle ladder showed
+the world pays heavily for perception, and a linear readout of vision can represent it.
+But evolution only found it once a single mutation could produce a first, partial
+version: tectal reflex arcs in a bilateral, tectum-equipped "Cambrian" body plan. With
+them, 3 of 4 seeds evolved food-gated eating and collision avoidance, and blinding cuts
+their food intake by 29–90%. Without them, at most 1 borderline case appeared in ~28 runs
+(p = 0.003). Physiological budding moved foragers past the blind-taster rung in 3/3 seeds.
+Nine other interventions did not help; they are listed, with data, in the results.
+
+**Round 1:**
 
 * The engine works: energy is conserved exactly up to float32 rounding, unfolding is
   provably conservative, and one CPU core does ~7×10⁴ agent-steps/s (~400 generations in

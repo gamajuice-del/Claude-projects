@@ -54,9 +54,10 @@ class Config:
     rf_mode: str = "pixel"       # "pixel": 25 free weights per receptive field;
                                  # "gaussian": centre (f0, s0) + width (3 genes)
     sigma_init: float = -2.5     # initial log mutation step size
-    bilateral: bool = False      # neurons develop in left/right mirror pairs
-    tectum: bool = False         # retinotopic salience map + winner-take-all orienting circuit
-    reflex_arcs: bool = False    # direct (monosynaptic) receptive-field -> action-logit pathway
+    bilateral: bool = True       # neurons develop in left/right mirror pairs
+    tectum: bool = True          # retinotopic salience map + winner-take-all orienting circuit
+    temp_min: float = 0.0        # floor on action-selection temperature (behavioural noise)
+    reflex_arcs: bool = True     # direct receptive-field / tectum -> action-logit pathways
     arc_learning: bool = False   # three-factor (dopamine-gated actor) learning on the arcs
     c_arc_learn: float = 0.002   # energy per step at maximal arc-learning rate
     arc_features: str = "rf"     # "rf": learn on receptive-field responses; "raw": on the retina

@@ -392,6 +392,8 @@ class World:
                 les = getattr(self, "lesion", None)      # lesion studies (metrics.lesion_study)
                 if les == "vision":
                     Xv = xp.zeros_like(Xv)
+                    if getattr(cfg, "tectum", False):   # blindness silences the tectum too
+                        Xo[:, -5:] = 0
                 elif les == "sound":
                     Xo[:, :5 * cfg.S_max] = 0
                 elif les == "memory":                    # reflex-only: no carried-over state
@@ -418,6 +420,17 @@ class World:
                 logits = out[:, :NA] / A["temp"][:n, None] + (om[:, :NA] - 1.0) * 1e9
                 if not self.physics.building:    # unfolding never changes living organisms
                     logits[:, BUILD] = -1e9
+                if "tec_arc" in self.lay.gs:         # tectal reflex arcs (direct orienting/feeding)
+                    tec = Xo[:, -5:]
+                    Wt = A["genome"][:n, self.lay.gs["tec_arc"]].reshape(n, 5, NA)
+                    d = xp.matmul(tec[:, None, :], Wt)[:, 0, :]
+                    if getattr(cfg, "bilateral", False):   # mirror: s* -> -s*, left <-> right
+                        tm = tec.copy()
+                        tm[:, 1] = -tm[:, 1]
+                        dm = xp.matmul(tm[:, None, :], Wt)[:, 0, :]
+                        dm[:, [LEFT, RIGHT]] = dm[:, [RIGHT, LEFT]]
+                        d = 0.5 * (d + dm)
+                    logits = logits + d * om[:, :NA] / A["temp"][:n, None]
                 gumbel = -xp.log(-xp.log(u_g[:n] + 1e-12) + 1e-12)
                 act = xp.argmax(logits + gumbel, 1).astype(np.int32)
                 if aux is not None and self.plastic_on and "s" in aux:
@@ -846,6 +859,15 @@ class World:
     def __setstate__(self, d):
         self.__dict__.update(d)
         self.xp = get_xp(self.cfg.device)
+        # upgrade worlds saved by older versions: add agent arrays the schema has gained
+        A = self.agents
+        ref = Agents.__new__(Agents)
+        Agents.__init__(ref, self.cfg.replace(max_agents=1), GenomeLayout(self.cfg), np)
+        for k, (shape, dt) in ref.spec.items():
+            if k not in A.arr:
+                A.arr[k] = self.xp.zeros((A.A,) + shape, dtype=dt)
+        for k in ("policy", "lesion"):
+            self.__dict__.setdefault(k, None)
 
     def snapshot(self) -> dict:
         """Scalar summary for logging; resets per-interval counters."""
