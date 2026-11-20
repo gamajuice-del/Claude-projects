@@ -399,7 +399,9 @@ unbounded reals decoded by smooth squashing functions, so every mutant is viable
    and the salience underfoot); and *reflex arcs* (direct receptive-field→action and
    tectum→action genes, like monosynaptic sensorimotor pathways). Optional, off by default:
    three-factor dopamine-gated learning on the arcs (eligibility × reward-prediction
-   error); Gaussian receptive fields; Weber-law receptors; a behavioural-noise floor.
+   error); **plastic tectal salience** (`sal_learning`, Round 3: value learning from what
+   was eaten, which evolved and tracks food-value reversals); Gaussian receptive fields;
+   Weber-law receptors; a behavioural-noise floor.
 
 ### 4.3 Dynamics, plasticity, neuromodulation and the predictive substrate
 
@@ -854,6 +856,15 @@ deprivation and is ecologically plausible; a cap on chronic-deprivation time per
     meaningless at fixed density (the invasion test replaced them). A lesion silenced
     the eyes but not the tectum. A harness clamped energy at a level that penalised
     hunger-gated foragers. Each would have produced a confident wrong conclusion.
+13. **Round 3: learning yes, memory not yet.** Lifetime learning needed three world
+    properties before it could pay or evolve: patchy single-species plant cells (so
+    selective eating is possible), toxicity that reverses within a lifetime, and a
+    ramp-in (so founders can bootstrap). Its mechanism (plastic tectal salience, a
+    three-factor rule) has a first step that half of random founders can take. It
+    evolved in 2/2 seeds and tracks reversals in the wild (r ≈ 0.94). Spatial memory
+    paid nothing in 11 ecology variants. A crowded world with ubiquitous fallback food
+    does not reward remembering places, and private resources (caching, territories)
+    are the next candidates. See `RESULTS.md` §8.
 
 ### 13.3 Biggest open risks
 

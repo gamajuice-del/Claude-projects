@@ -43,6 +43,8 @@ class GenomeLayout:
             g_fields += [("sal_w", C), ("sal_beta", 1)]
             if getattr(cfg, "reflex_arcs", False):   # tectum -> action logits, one gene per pair
                 g_fields += [("tec_arc", 5 * NA)]
+            if getattr(cfg, "sal_learning", False):  # rate, value coupling, forgetting
+                g_fields += [("sal_eta", 1), ("sal_dE", 1), ("sal_decay", 1)]
         t_fields = [
             ("count", 1), ("q", cfg.d_aff), ("k", cfg.d_aff), ("w_scale", 1),
             ("bias", 1), ("alpha", 1), ("dev_noise", 1), ("eta", 1),
@@ -200,6 +202,11 @@ def decode_globals(xp, lay: GenomeLayout, g, k_active: int):
         epi_rho=sg(G("epi_rho")[:, 0]).astype(xp.float32),
         share=(0.05 + 0.45 * sg(G("share")[:, 0])).astype(xp.float32),
     )
+    if "sal_eta" in lay.gs:
+        out.update(
+            sal_eta=(0.5 * sg(G("sal_eta")[:, 0] - 2.0)).astype(xp.float32),
+            sal_dE=G("sal_dE")[:, 0].astype(xp.float32),
+            sal_decay=(0.02 * sg(G("sal_decay")[:, 0])).astype(xp.float32))
     if "arc_eta" in lay.gs:
         out.update(
             arc_eta=(0.2 * sg(G("arc_eta")[:, 0] - 2.0)).astype(xp.float32),

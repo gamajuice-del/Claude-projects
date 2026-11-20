@@ -39,6 +39,14 @@ own: nothing in it rewards intelligence. Organisms just try to stay alive and re
 
 ## Status (details in `docs/RESULTS.md`)
 
+**Round 3.** *Lifetime learning* has evolved. With patchy food species that alternate
+between nutritious and toxic, organisms evolved a dopamine-like value-learning system
+(plastic attention/salience). Their learned value of each species tracks which one is
+currently nutritious (r ≈ 0.94, ~50-step lag, 2/2 seeds), and switching learning off
+costs ~9% of intake. The behavioural effect is still small, and the chamber reversal
+assay hasn't detected it yet. Spatial memory does not pay in any ecology tried (11
+variants); that's a negative result, not a failure to look.
+
 **Round 2.** The first *perception-driven* foragers have evolved. The oracle ladder showed
 the world pays heavily for perception, and a linear readout of vision can represent it.
 But evolution only found it once a single mutation could produce a first, partial

@@ -262,6 +262,9 @@ def lesion_study(world, steps=150, kinds=("vision", "memory", "sound")):
     clone run with identical random numbers. 1.0 = faculty irrelevant."""
     def intake(lesion):
         w = world.clone()
+        if lesion == "plasticity":     # no lifetime learning of any kind
+            w.plastic_on = False
+            lesion = None
         w.lesion = lesion
         w.counters.clear()
         agent_steps = 0

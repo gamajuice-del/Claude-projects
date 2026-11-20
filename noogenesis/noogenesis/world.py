@@ -65,6 +65,10 @@ class Agents:
             "compat": ((), f), "eta_pred": ((), f), "temp": ((), f),
             "epi_rho": ((), f), "share": ((), f),
             "arc_eta": ((), f), "arc_dE": ((), f), "arc_mod": ((), f), "arc_trace": ((), f),
+            "sal_eta": ((), f), "sal_dE": ((), f), "sal_decay": ((), f),
+            "sal_F": ((vision_channels(cfg),), f),   # learned salience offsets
+            "sal_e": ((vision_channels(cfg),), f),   # eligibility: what was recently eaten
+            "sal_base": ((), f),                     # running mean of energy change
         }
         spec.update(brain_spec(cfg))
         self.spec = spec
@@ -112,6 +116,7 @@ class World:
         self.rng = xp.random.default_rng(cfg.seed)            # behaviour (fixed-shape draws)
         self.rng_dev = xp.random.default_rng(cfg.seed + 7919)  # development + mutation
         self.hrng = np.random.default_rng(cfg.seed + 104729)   # host: climate, hotspots
+        self.rng_occ = xp.random.default_rng(cfg.seed + 31337)  # occlusion (separate stream)
         self.physics = physics or Physics(cfg.k_init, cfg.s_init, cfg.p_init,
                                           cfg.building_init, cfg.night_radius_init)
         H, W, K = cfg.H, cfg.W, cfg.K_max
@@ -139,6 +144,17 @@ class World:
         sites = (self.hrng.random((H, W)) < cfg.site_density).astype(np.float32)
         # two-tier vegetation: low-yield grass everywhere, rich fruit at fixed sites
         self.cap = xp.asarray(cfg.grass_cap + (getattr(cfg, "fruit_cap", 1.0) - cfg.grass_cap) * sites)
+        L = getattr(cfg, "species_patch", 0.0)
+        if L > 0:   # patchy plant communities: one species per cell, active species only
+            noise = self.hrng.standard_normal((cfg.K_max, H, W))
+            fy = np.fft.fftfreq(H)[:, None]
+            fx = np.fft.fftfreq(W)[None, :]
+            kern = np.exp(-2 * (np.pi * L) ** 2 * (fy ** 2 + fx ** 2))
+            smooth = np.real(np.fft.ifft2(np.fft.fft2(noise) * kern))
+            self._species_noise = smooth
+            self.species_map = None
+        else:
+            self._species_noise = None
         yy, xx = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
         self._yy, self._xx = xp.asarray(yy, f32), xp.asarray(xx, f32)
         self.light = xp.ones((H, 1), f32)
@@ -146,6 +162,10 @@ class World:
         self._build_geometry()
         self._update_drivers(force_fert=True)
         self.veg[:self.physics.k_active] = 0.5 * self.fert[:self.physics.k_active] * self.cap
+        if self._species_noise is not None:
+            owner = self._species_noise[:self.physics.k_active].argmax(0)
+            self.veg[:self.physics.k_active] *= xp.asarray(
+                np.stack([(owner == j) for j in range(self.physics.k_active)]).astype(np.float32))
         self.agents = Agents(cfg, self.lay, xp)
         self.next_id = 0
         self.ledger = dict(solar=0.0, heat=0.0, immigration=0.0)
@@ -222,6 +242,15 @@ class World:
             self.hot = (self.hot + step) % np.array([cfg.H, cfg.W])
         else:
             self.is_night = False
+        P = getattr(cfg, "tox_period", 0)
+        if P > 0:   # which species is nutritious right now (opposite phases for 2 species)
+            k = np.arange(cfg.K_max)
+            good = np.sin(2 * math.pi * self.t / P + math.pi * k) > 0
+            ramp = getattr(cfg, "tox_ramp", 0)
+            r = float(np.clip((self.t - getattr(cfg, "tox_start", 0)) / max(ramp, 1), 0.0, 1.0)) \
+                if (ramp or getattr(cfg, "tox_start", 0)) else 1.0
+            bad = 1.0 - (1.0 + cfg.tox_value) * r
+            self.species_value = xp.asarray(np.where(good, 1.0, bad).astype(np.float32))
         if force_fert or (cfg.climate and self.t % 10 == 0):
             K, nh = self.hot.shape[:2]
             hy = xp.asarray(self.hot[..., 0].astype(np.float32))[:, :, None, None]
@@ -316,6 +345,11 @@ class World:
             x0 = cfg.weber_x0
             Xv[:, :K + 2] = xp.log1p(Xv[:, :K + 2] / x0) / math.log1p(1.0 / x0)
         Xv[:, K + 1, :] *= self.near_mask
+        vis = getattr(cfg, "food_visibility", 1.0)
+        if vis < 1.0:   # occlusion: food flickers in and out of view; underfoot is always felt
+            seen = (self.rng_occ.random((self.agents.A, Xv.shape[2]), dtype=np.float32) < vis)[:n]
+            seen[:, CENTER_P] = True
+            Xv[:, :K + 2, :] *= seen[:, None, :]
         if self.is_night:
             Xv *= self.night_masks[self.physics.night_radius]
         so = self.sound_offsets[hd]
@@ -332,6 +366,31 @@ class World:
         target = xp.concatenate([mean3, Xv[:, :, FRONT_P], intero6, snd[:, :cfg.S_max]], 1)
         return Xv, snd, intero6, target
 
+    def _salience_learning(self, n):
+        """Value learning on the tectal salience map (conditioned taste preference /
+        aversion). The energy change now reflects what was eaten last step:
+            m      = tanh(g_dE * (dE - baseline))     evolved value signal (RPE)
+            sal_F += eta * m * e - decay * sal_F       credit to what was eaten
+        and the eligibility e (channels of eaten cells) is extended after acting."""
+        xp, A = self.xp, self.agents
+        dE = A["dE"][:n]
+        base = A["sal_base"][:n]
+        rpe = dE - base
+        base += 0.05 * rpe
+        m = xp.tanh(A["sal_dE"][:n] * rpe * 10.0)
+        F = A["sal_F"][:n]
+        F += (A["sal_eta"][:n] * m)[:, None] * A["sal_e"][:n] - A["sal_decay"][:n, None] * F
+        xp.clip(F, -4.0, 4.0, out=F)
+        self.counters["sal_m_abs"] += fsum(xp.abs(m))
+
+    def _salience_trace(self, n, Xv, act):
+        A, xp = self.agents, self.xp
+        e = A["sal_e"][:n]
+        e *= 0.5
+        ate = (act == EAT).astype(np.float32)
+        K = self.cfg.K_max          # taste senses the food (species, meat, cache), not the eater
+        e[:, :K + 2] += ate[:, None] * Xv[:, :K + 2, CENTER_P]
+
     def _tectum(self, Xv, n):
         """Optic-tectum analogue: a retinotopic salience map (genetically weighted
         sum of visual channels at each location) with soft winner-take-all over
@@ -339,6 +398,8 @@ class World:
         salience, the salience underfoot, and their difference."""
         xp, A = self.xp, self.agents
         w = A["genome"][:n, self.lay.gs["sal_w"]]                     # (n, C)
+        if getattr(self.cfg, "sal_learning", False) and self.plastic_on:
+            w = w + A["sal_F"][:n]
         beta = xp.exp(xp.clip(A["genome"][:n, self.lay.gs["sal_beta"].start], -2.0, 3.0))
         sal = (Xv * w[:, :, None]).sum(1)                              # (n, P)
         own = sal[:, CENTER_P]
@@ -383,6 +444,8 @@ class World:
                 intero6[:, 0:2], age_f[:, None], intero6[:, 2:5], intero6[:, 5:6],
                 surprise[:, None], xp.ones((n, 1), f32), 0.5 * nz[:n, None], A["color"][:n]], 1)
             Xo = xp.concatenate([snd, intero, self.eyeNA[A["last_action"][:n]]], 1)
+            if getattr(cfg, "sal_learning", False) and self.plastic_on:
+                self._salience_learning(n)
             if getattr(cfg, "tectum", False):
                 Xo = xp.concatenate([Xo, self._tectum(Xv, n)], 1)
             policy = getattr(self, "policy", None)  # oracle strategies (oracles.py)
@@ -462,6 +525,8 @@ class World:
                            s_emit=s_emit, pos=A["pos"][:n].copy(),
                            heading=A["heading"][:n].copy(),
                            ids=A["id"][:n].copy(), energy=A["energy"][:n].copy())
+            if getattr(cfg, "sal_learning", False) and self.plastic_on:
+                self._salience_trace(n, Xv, act)
             A["last_action"][:n] = act
             self.action_hist += np.bincount(to_numpy(act), minlength=NA)
             heat += self._act(act, u_m, u_d, s_emit, p_emit, occ, h_new)
@@ -701,6 +766,7 @@ class World:
         rows["F"], rows["P"] = inherit_fast_weights(xp, A["F"][ci], A["P"][ci], smap,
                                                     A["epi_rho"][ci])
         rows["arc_F"] = A["arc_F"][ci] * A["epi_rho"][ci][:, None, None]   # retinotopic: slot-stable
+        rows["sal_F"] = A["sal_F"][ci] * A["epi_rho"][ci][:, None]
         b = int(ci.size)
         rows.update(
             genome=child, pos=xp.stack([by, bx], 1).astype(np.int32),
@@ -727,6 +793,8 @@ class World:
                 + cfg.c_forward * A["eta_pred"][:n] / 0.05
                 + (getattr(cfg, "c_arc_learn", 0.0) * A["arc_eta"][:n] / 0.2
                    if getattr(cfg, "arc_learning", False) else 0.0)
+                + (getattr(cfg, "c_sal_learn", 0.0) * A["sal_eta"][:n] / 0.5
+                   if getattr(cfg, "sal_learning", False) else 0.0)
                 + cfg.c_carry * A["carry"][:n].sum(1)
                 + cfg.c_sound * (s_emit ** 2).sum(1)
                 + cfg.c_pher * p_emit.sum(1)
@@ -786,6 +854,13 @@ class World:
             v = self.veg[:k]
             rate = xp.asarray(self.species_rate[:k])[:, None, None]
             room = xp.maximum(1.0 - v / self.cap, 0.0)           # logistic to local cap
+            if getattr(self, "_species_noise", None) is not None:
+                sm = getattr(self, "species_map", None)
+                if sm is None or sm.shape[0] != k:   # recomputed when a species unfolds
+                    owner = self._species_noise[:k].argmax(0)
+                    sm = xp.asarray(np.stack([(owner == j) for j in range(k)]).astype(np.float32))
+                    self.species_map = sm
+                room = room * sm
             dv = cfg.veg_rate * self.light[None] * rate * self.fert[:k] * \
                  (v + cfg.veg_seed) * room
             v += dv
@@ -868,6 +943,8 @@ class World:
                 A.arr[k] = self.xp.zeros((A.A,) + shape, dtype=dt)
         for k in ("policy", "lesion"):
             self.__dict__.setdefault(k, None)
+        if "rng_occ" not in self.__dict__:
+            self.rng_occ = self.xp.random.default_rng(self.cfg.seed + 31337)
 
     def snapshot(self) -> dict:
         """Scalar summary for logging; resets per-interval counters."""

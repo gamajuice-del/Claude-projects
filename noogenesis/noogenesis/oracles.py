@@ -119,24 +119,25 @@ class Reflex:
 
 
 class Memory(Reflex):
-    """Reflex + remembers the world position of the best food it has seen."""
+    """Reflex + an allocentric memory of the best *fruit-level* food seen recently.
+    Visible fruit is approached directly; when none is visible (night, grazed-down
+    surroundings), the remembered location is preferred over visible grass."""
     name = "memory"
 
-    def __init__(self, horizon=200, **kw):
+    def __init__(self, horizon=300, fruit=0.35, **kw):
         super().__init__(**kw)
-        self.horizon = horizon
+        self.horizon, self.fruit = horizon, fruit
         self.goal = None
 
     def __call__(self, world, n, Xv):
         A = world.agents
         H, W = world.cfg.H, world.cfg.W
-        if self.goal is None or self.goal.shape[0] < n:
+        if self.goal is None or self.goal.shape[0] < A.A:
             self.goal = np.full((A.A, 4), -1.0)        # y, x, value, time seen
-        a, _ = self.choose(world, n, Xv)
+        val = food_value(world, n, Xv)
+        own = val[:, CENTER_P]
         pos = to_numpy(A["pos"][:n])
         hd = to_numpy(A["heading"][:n])
-        val = food_value(world, n, Xv)
-        # remember the best visible non-own cell, in world coordinates
         v2 = val.copy()
         v2[:, CENTER_P] = 0
         j = v2.argmax(1)
@@ -145,25 +146,125 @@ class Memory(Reflex):
         wx = (pos[:, 1] + PF[j] * F_DIR[hd, 1] + PS[j] * R_DIR[hd, 1]) % W
         g = self.goal[:n]
         stale = (world.t - g[:, 3]) > self.horizon
-        upd = (vbest > 0.2) & ((vbest > g[:, 2]) | stale | (g[:, 0] < 0))
+        g[stale] = -1
+        upd = (vbest >= self.fruit) & (vbest >= g[:, 2])
         g[upd] = np.stack([wy, wx, vbest, np.full(n, world.t)], 1)[upd]
-        # arrived at goal -> forget it
-        at = (g[:, 0] == pos[:, 0]) & (g[:, 1] == pos[:, 1])
-        g[at | stale, 0] = -1
-        g[at | stale, 2] = -1
-        # when nothing good is visible, navigate to the remembered goal
-        need = (a < 0) & (g[:, 0] >= 0)
+        at = (g[:, 0] == pos[:, 0]) & (g[:, 1] == pos[:, 1]) & (own < self.fruit)
+        g[at] = -1
+        blocked = _blocked_front(world, n, Xv)
+        eat = (own > 1e-3) & ((own >= self.eat_frac * vbest) | (own >= self.eat_abs))
+        to_vis = steer(PF[j], PS[j], blocked)
         dy = (g[:, 0] - pos[:, 0] + H / 2) % H - H / 2
         dx = (g[:, 1] - pos[:, 1] + W / 2) % W - W / 2
         f = dy * F_DIR[hd, 0] + dx * F_DIR[hd, 1]
         s = dy * R_DIR[hd, 0] + dx * R_DIR[hd, 1]
-        nav = steer(f, s, _blocked_front(world, n, Xv))
-        a = np.where(need, nav, a)
-        a = np.where(a < 0, _wander(self.rng, n), a)
+        to_goal = steer(f, s, blocked)
+        has_goal = g[:, 0] >= 0
+        a = np.where(eat, EAT,
+             np.where(vbest >= self.fruit, to_vis,
+             np.where(has_goal, to_goal,
+             np.where(vbest > 1e-3, to_vis, _wander(self.rng, n)))))
         return world.xp.asarray(a)
 
 
-LADDER = {"random": Random, "taste": Taste, "reflex": Reflex, "memory": Memory}
+class Persist(Reflex):
+    """Minimal memory: when no fruit-level food is visible, keep executing the
+    last fruit-directed movement for up to `hold` steps (no map, no updating)."""
+    name = "persist"
+
+    def __init__(self, hold=6, fruit=0.35, **kw):
+        super().__init__(**kw)
+        self.hold, self.fruit = hold, fruit
+        self.last, self.age = None, None
+
+    def __call__(self, world, n, Xv):
+        A = world.agents
+        if self.last is None or self.last.shape[0] < A.A:
+            self.last = np.full(A.A, -1)
+            self.age = np.full(A.A, 999)
+        val = food_value(world, n, Xv)
+        own = val[:, CENTER_P]
+        v2 = val.copy()
+        v2[:, CENTER_P] = 0
+        j = v2.argmax(1)
+        vbest = v2[np.arange(n), j]
+        blocked = _blocked_front(world, n, Xv)
+        eat = (own > 1e-3) & ((own >= self.eat_frac * vbest) | (own >= self.eat_abs))
+        to_vis = steer(PF[j], PS[j], blocked)
+        last, age = self.last[:n], self.age[:n]
+        fresh = vbest >= self.fruit
+        last[fresh & ~eat] = to_vis[fresh & ~eat]
+        age[fresh] = 0
+        age[~fresh] += 1
+        keep = ~fresh & (age <= self.hold) & (last >= 0)
+        a = np.where(eat, EAT, np.where(fresh, to_vis,
+             np.where(keep, np.where(blocked & (last == FWD), RIGHT, last),
+             np.where(vbest > 1e-3, to_vis, _wander(self.rng, n)))))
+        return world.xp.asarray(a)
+
+
+class Learner(Reflex):
+    """Reflex whose food values per species are learned from experience: after
+    eating, the realised energy per unit of each species updates a running
+    estimate; species currently estimated as harmful are neither approached nor
+    eaten. (Uses only what an organism experiences: what it ate, what it got.)"""
+    name = "learner"
+
+    def __init__(self, rate=0.3, forget=0.01, prior=0.3, **kw):
+        super().__init__(**kw)
+        self.rate, self.forget, self.prior = rate, forget, prior
+        self.v = None
+
+    def choose(self, world, n, Xv):
+        A = world.agents
+        K = world.cfg.K_max
+        if self.v is None or self.v.shape[0] < A.A:
+            self.v = np.full((A.A, K), 0.5)
+        le = to_numpy(world.last_eat)
+        if le.shape[0] == n:
+            eff = to_numpy(A["eff"][:n])
+            val = to_numpy(world.species_value)
+            amt = le[:, :K]
+            ate = amt > 1e-4
+            unit = eff[:, :K] * val[None, :]            # experienced energy per unit eaten
+            v = self.v[:n]
+            v[ate] += self.rate * (unit[ate] - v[ate])
+            v += self.forget * (self.prior - v)          # beliefs fade -> occasional re-tasting
+        w = np.clip(self.v[:n], 0.0, None)              # avoid what is believed harmful
+        X = to_numpy(Xv).copy()
+        X[:, :K, :] *= (w / np.maximum(to_numpy(A["eff"][:n])[:, :K], 1e-6))[:, :, None]
+        return super().choose(world, n, world.xp.asarray(X))
+
+
+class LearnMemory(Memory):
+    """Learner + allocentric memory: species values are learned from experience
+    (as in Learner) and the remembered fruit location uses learned values."""
+    name = "learnmemory"
+
+    def __init__(self, rate=0.3, forget=0.01, prior=0.3, **kw):
+        super().__init__(**kw)
+        self._L = Learner(rate=rate, forget=forget, prior=prior)
+
+    def __call__(self, world, n, Xv):
+        L, A, K = self._L, world.agents, world.cfg.K_max
+        if L.v is None or L.v.shape[0] < A.A:
+            L.v = np.full((A.A, K), 0.5)
+        le = to_numpy(world.last_eat)
+        if le.shape[0] == n:
+            eff = to_numpy(A["eff"][:n])
+            unit = eff[:, :K] * to_numpy(world.species_value)[None, :]
+            ate = le[:, :K] > 1e-4
+            v = L.v[:n]
+            v[ate] += L.rate * (unit[ate] - v[ate])
+            v += L.forget * (L.prior - v)
+        w = np.clip(L.v[:n], 0.0, None)
+        X = to_numpy(Xv).copy()
+        X[:, :K, :] *= (w / np.maximum(to_numpy(A["eff"][:n])[:, :K], 1e-6))[:, :, None]
+        return super().__call__(world, n, world.xp.asarray(X))
+
+
+LADDER = {"random": Random, "taste": Taste, "reflex": Reflex, "persist": Persist, "memory": Memory,
+          "learner": Learner, "learnmemory": LearnMemory}
 
 
 def evaluate(cfg, policy, n_agents=500, settle=500, measure=500, seed=0, physics=None,
@@ -254,10 +355,11 @@ def invasion(cfg, resident, invader, frac=0.2, n_agents=500, settle=400, measure
         d = energy - A["energy"][:A.n]   # hold bodies at the residents' typical energy
         A["energy"][:A.n] += d
         A["prev_energy"][:A.n] += d
-        if t >= settle:
+        if t >= settle:   # realised energy, including the sign of toxic food
             le = to_numpy(w.last_eat)
             eff = to_numpy(A["eff"][:A.n])
-            tot[:A.n] += (eff[:, :K] * le[:, :K]).sum(1) + eff[:, K] * le[:, K]
+            val = to_numpy(w.species_value)
+            tot[:A.n] += (eff[:, :K] * val[None, :] * le[:, :K]).sum(1) + eff[:, K] * le[:, K]
     n = w.agents.n
     g = groups[:n]
     inv, res = tot[:n][g == 1].mean() / measure, tot[:n][g == 0].mean() / measure

@@ -1,6 +1,11 @@
 # Results from the prototype (CPU)
 
-> **Latest (Round 2, §7):** the first *perception-driven* foragers have evolved. Without
+> **Latest (Round 3, §8):** *lifetime learning* has evolved. In both learning seeds the
+> learned value of each food species tracks which one is currently nutritious (r = 0.93–0.94
+> at a ~50-step lag), and switching learning off costs ~9% of intake. Spatial memory still
+> does not pay in any ecology tried (11 variants).
+>
+> **Round 2 (§7):** the first *perception-driven* foragers have evolved. Without
 > tectal reflex arcs, no population in ~28 runs relied on vision. With them, 3 of 4 seeds
 > did (blinding cuts food intake by 29–90%; Fisher p = 0.003). The diagnosis behind this,
 > and every intervention that did *not* work, are in §7. Round 1 (§1–6) is kept as it was.
@@ -358,3 +363,116 @@ Two instrument bugs were found and fixed in this round:
    (food quality that changes within a lifetime), with the oracle ladder used to verify
    *before* evolving that each rung pays, and to check that its first step is reachable by
    one mutation.
+
+
+---
+
+## 8. Round 3: memory and learning
+
+Method, as in Round 2: before evolving, check with oracles that the world pays for the
+rung, and check that a first partial step is reachable by one mutation. Data:
+`round3.json`.
+
+### 8.1 Spatial memory: no ecology tried pays for it
+
+Memory oracles were measured against reflex (or learner) residents in 11 world variants:
+
+| Variants | Memory oracle | Persistence oracle |
+|---|---|---|
+| Normal or deep night; faster days; sparser fruit | 0.98–1.07× | 1.01–1.04× |
+| Food occluded (visible 50% / 25% / 10% of steps) | 1.01–1.08× | 0.94–1.04× |
+| Rich, sparse, multi-bite fruit; less grass | 0.99–1.11× | — |
+| The learning world below (memory of patches that just turned nutritious) | 0.91–0.98× | — |
+
+The first memory oracle never engaged: grass is visible almost everywhere, so its
+"nothing visible" branch never triggered. After rewriting it to prefer remembered fruit,
+the conclusion was unchanged. In a crowded world with ubiquitous fallback food, a
+remembered site is usually found and emptied by someone else first. **Negative result:**
+this ecology class does not reward spatial memory. Candidates for later: private stores
+(caching under seasonal scarcity), defensible territories, social information.
+
+### 8.2 Making lifetime learning pay
+
+- **Toxicity regime.** The two food species alternate between nutritious and toxic,
+  always one of each, every 345 steps: within a lifetime, and too fast for genes to track.
+  Toxic food costs energy, never health.
+- **First attempt: learning was useless (0.87–1.36×).** Every cell grew both species and
+  a bite eats whatever is there, so toxicity just diluted every mouthful. **Patchy plant
+  communities** (one species per cell, from smooth random fields with patch size ~4)
+  fixed this. A learner oracle then beats an indiscriminate reflex forager **3.6–8×**, and
+  exactly **1.00×** without toxicity (the control).
+- **Viability.** Patchiness halves productivity and toxicity halves it again. Random
+  founders could not bootstrap (population stuck at the floor, zero generations).
+  Doubling per-cell capacity and growth, and ramping toxicity in between 20k and 40k
+  steps (plant defences evolving), made populations viable.
+- **Instrument bug.** The competition harness counted food *eaten*, not energy *gained*,
+  so toxic food counted as nutritious. It now counts realised energy (regression test
+  added). The learner oracle also needed forgetting; otherwise it never re-tastes a
+  species after judging it harmful.
+
+### 8.3 The learning mechanism: plastic salience
+
+The tectum's channel weights get a learned offset: a dopamine-like three-factor rule
+(eligibility = the food channels of what was eaten; signal = evolved coupling × (energy
+change − its running mean)). Rate, coupling and forgetting are genes; founders are random.
+This is conditioned taste preference and aversion. Its first step is a positive rate with
+the right sign of coupling, and half of all random founders already have that sign.
+
+Within-life test (organisms with hand-set foraging genes, no evolution):
+
+| Condition | Realised intake |
+|---|---|
+| No learning | 0.0019 |
+| Learning | **0.0030 (+58%)** |
+| Inverted coupling | 0.0006 |
+
+A first version *lowered* intake (0.0013): the eligibility trace included the organism's
+own presence and colour, which are present at every meal, so attention drifted. Taste
+now senses food channels only.
+
+### 8.4 Evolution with learning available (2 seeds) vs not (2 seeds), 100k steps
+
+| | Learning (seed 1 / 2) | Control (seed 1 / 2) |
+|---|---|---|
+| Intake after blinding | **0.13 / 0.18** | 0.95 / 0.77 |
+| Intake with learning switched off | **0.92 / 0.91** | 1.00 / 1.00 |
+| Organisms whose energy→salience coupling has the population's sign | 100% / 100% | — |
+| Learned salience difference vs current toxicity (corr., 50-step lag) | **0.93 / 0.94** | — |
+| Fraction eaten that is currently nutritious, learning on vs off | 0.63 vs 0.64 / 0.71 vs 0.68 | 0.63 vs 0.62 / 0.67 vs 0.67 |
+| Learner oracle invading brains | 5.4× / 8.9× | 13.3× / 8.5× |
+| Chamber reversal assay (late accuracy vs knock-out) | 0.49 vs 0.56 / 0.52 vs 0.58 | 0.50 vs 0.53 / 0.41 vs 0.42 |
+
+What this shows:
+- **Learning evolved and is used.** Switching it off costs ~9% of intake in both seeds
+  and nothing in the controls. The value coupling is uniform within each population.
+  Its sign is "negative", consistent with these lineages coding food as negative
+  salience: reward learning in their own convention.
+- **It tracks the world.** Through a full toxicity cycle, the learned salience difference
+  between the two species follows which one is currently nutritious with r = 0.93–0.94,
+  peaking at a 50-step lag, in both seeds. The organisms re-learn food values within ~50
+  steps of each reversal, with no designed reward.
+- **Learning and perception reinforce each other.** Blinding costs 82–87% of intake in
+  learning lineages but 5–23% in controls.
+- **Limits.** The behavioural expression is still small: diet selectivity rises +0.04 in
+  one seed and falls 0.01 in the other, and brains remain 5–9× below the learner oracle.
+  The chamber reversal assay shows no learning. Either the assay doesn't match how these
+  organisms learn (e.g. chamber values of ±1 versus world values of +1/−0.5, or too few
+  trials), or the learned values steer approach more than choice. This needs diagnosis
+  before the assay can be trusted either way.
+- **Harsh world.** After toxicity ramped in, populations crashed at switches and
+  immigrants refilled them. Floor immigrants now come only from the recent fossil record,
+  not random genomes, so evolved lineages aren't diluted.
+
+### 8.5 Where this leaves the ladder
+
+| Rung | Status |
+|---|---|
+| 0 homeostasis | ✔ |
+| 1 perception-guided action | ✔ (3/4 seeds in Round 2; 4/4 lineages with learning here use vision heavily) |
+| 2 working memory (spatial) | ✘ the world does not pay for it yet (11 variants) |
+| 3 lifetime learning | ✔ partial: evolved, used, tracks reversals in the wild; small behavioural effect; chamber assay not yet passed |
+
+**For Stage 2, this matters:** learned food values are the first *experience-derived*
+internal quantities these organisms have. They are learned, they track the world, and
+they are about something ("this species is good to eat now"). They are the first
+candidate referents for words.

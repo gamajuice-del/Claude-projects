@@ -254,3 +254,40 @@ def test_vision_lesion_silences_tectum():
     w.lesion = "vision"
     w.step()
     assert seen and seen[0] == (0.0, 0.0)
+
+
+def test_invasion_counts_toxic_food_as_harmful():
+    """A strategy that only eats toxic food must score below one that eats everything."""
+    from noogenesis.oracles import invasion, Reflex
+    kw = dict(n_agents=150, settle=50, measure=150)
+    tox = invasion(small(tox_period=200, tox_value=1.0), Reflex(seed=1), Reflex(seed=2), **kw)
+    clean = invasion(small(), Reflex(seed=1), Reflex(seed=2), **kw)
+    assert tox["resident"] < 0.5 * clean["resident"]
+    w = World(small(tox_period=200))
+    vals = set()
+    for _ in range(220):
+        w.step()
+        vals.add(tuple(np.round(w.species_value[:2], 2)))
+    assert (1.0, -1.0) in vals and (-1.0, 1.0) in vals
+
+
+def test_salience_learning_tracks_value_sign():
+    """Plastic salience: eating a food whose value is positive must move its learned
+    salience in the direction of the value coupling, and only food channels learn."""
+    from noogenesis.config import EAT
+    cfg = small(sal_learning=True, init_agents=0, immigration=False, repro=False,
+                deaths=False, growth=False, climate=False)
+    w = World(cfg, populate=False)
+    w.force_day = True
+    g = np.asarray(w.random_genomes(1)).copy()
+    g[:, w.lay.gs["sal_eta"].start] = 6.0
+    g[:, w.lay.gs["sal_dE"].start] = 3.0
+    w.spawn(g, positions=np.array([[20, 20]], np.int32), headings=np.array([0], np.int32))
+    w.veg[:] = 0
+    w.veg[0, 20, 20] = 1.0
+    for _ in range(6):
+        w.policy = lambda wd, n, Xv: np.full(n, EAT)
+        w.step()
+    F = np.asarray(w.agents["sal_F"][0])
+    K = cfg.K_max
+    assert F[0] > 0 and np.all(F[K + 2:] == 0)

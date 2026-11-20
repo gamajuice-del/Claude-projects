@@ -46,7 +46,8 @@ def evaluate(cfg, genomes, copies, n_oracle, settle, measure, seed):
         A["prev_energy"][:n] += d
         if t >= settle:
             le, eff = to_numpy(w.last_eat), to_numpy(A["eff"][:n])
-            tot += (eff[:, :K] * le[:, :K]).sum(1) + eff[:, K] * le[:, K]
+            val = to_numpy(w.species_value)
+            tot += (eff[:, :K] * val[None, :] * le[:, :K]).sum(1) + eff[:, K] * le[:, K]
     per = np.bincount(gid, weights=tot[:G * copies], minlength=G) / copies
     return per / measure, tot[G * copies:].mean() / measure
 

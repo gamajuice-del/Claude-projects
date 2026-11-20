@@ -26,7 +26,7 @@ class Config:
     max_agents: int = 2048       # slot capacity (memory is preallocated)
     init_agents: int = 700
     min_agents: int = 120        # below this, random immigrants arrive
-    immigrant_archive_frac: float = 0.5  # share of immigrants drawn from the fossil record
+    immigrant_archive_frac: float = 1.0  # share of immigrants drawn from the fossil record
 
     # ---- latent physics maxima (state space is allocated at max size) ----
     K_max: int = 4               # vegetation chemical species
@@ -59,6 +59,8 @@ class Config:
     temp_min: float = 0.0        # floor on action-selection temperature (behavioural noise)
     reflex_arcs: bool = True     # direct receptive-field / tectum -> action-logit pathways
     arc_learning: bool = False   # three-factor (dopamine-gated actor) learning on the arcs
+    sal_learning: bool = False   # plastic tectal salience: value learning from what was eaten
+    c_sal_learn: float = 0.002   # energy per step at maximal salience-learning rate
     c_arc_learn: float = 0.002   # energy per step at maximal arc-learning rate
     arc_features: str = "rf"     # "rf": learn on receptive-field responses; "raw": on the retina
     arc_rpe: bool = True         # value = energy change minus its running mean (RPE)
@@ -99,6 +101,15 @@ class Config:
     # ---- ecology ----
     site_density: float = 0.08   # fraction of cells that are fruiting sites
     grass_cap: float = 0.25      # biomass cap elsewhere (1.0 everywhere = the dense ecology)
+    species_patch: float = 0.0   # >0: each cell grows a single species, assigned by smooth
+                                 # random fields with this correlation length (cells)
+    tox_period: int = 0          # >0: active food species alternate nutritious/toxic with this
+                                 # period (opposite phases); toxic food costs energy
+    tox_value: float = 1.0       # energy value multiplier of a toxic species is -tox_value
+    tox_start: int = 0           # toxicity begins here and ramps in linearly over tox_ramp
+    tox_ramp: int = 0            # steps (plant defences evolving), so founders can bootstrap
+    food_visibility: float = 1.0 # per-step probability that food in a non-underfoot cell is
+                                 # visible (occlusion by foliage); 1.0 = always visible
     fruit_cap: float = 1.0       # biomass cap at fruiting sites
     veg_rate: float = 0.12
     veg_seed: float = 0.002

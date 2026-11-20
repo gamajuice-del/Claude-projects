@@ -39,7 +39,7 @@ class ChamberWorld:
         c = cfg.replace(H=H, W=W, max_agents=m, init_agents=0, min_agents=0,
                         growth=False, climate=False, repro=False, immigration=False,
                         deaths=False, cache_decay=0.0, meat_decay=0.0, wall_decay=0.0,
-                        seed=seed)
+                        seed=seed, tox_period=0, food_visibility=1.0)
         self.w = w = World(c, physics=copy.deepcopy(physics), populate=False)
         w.force_day = True
         w.plastic_on = plastic
