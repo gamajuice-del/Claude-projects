@@ -1,0 +1,320 @@
+{
+ "common_garden_learning": [
+  {
+   "t": 100000,
+   "garden_pop": 909,
+   "intake_intact": 0.0126,
+   "intake_ratio_vision": 0.7933,
+   "intake_ratio_plasticity": 0.9821,
+   "selectivity_intact": 0.5943,
+   "selectivity_no_plasticity": 0.5954,
+   "fr_curve": [
+    0.487,
+    0.451,
+    0.369,
+    0.669,
+    0.456,
+    0.58,
+    0.474,
+    0.803,
+    0.515,
+    0.546
+   ],
+   "fr_ko_curve": [
+    0.494,
+    0.439,
+    0.404,
+    0.586,
+    0.509,
+    0.539,
+    0.485,
+    0.406,
+    0.566,
+    0.592
+   ],
+   "fr_reversal_gain": -0.049,
+   "fr_ko_reversal_gain": 0.038,
+   "fr_late": 0.543,
+   "fr_ko_late": 0.564,
+   "fr_eating": 0.226,
+   "lineage": "ctl_s1"
+  },
+  {
+   "t": 100000,
+   "garden_pop": 841,
+   "intake_intact": 0.0175,
+   "intake_ratio_vision": 0.3247,
+   "intake_ratio_plasticity": 0.9856,
+   "selectivity_intact": 0.6265,
+   "selectivity_no_plasticity": 0.6256,
+   "fr_curve": [
+    0.539,
+    0.521,
+    0.589,
+    0.451,
+    0.355,
+    0.484,
+    0.412,
+    0.439,
+    0.451,
+    0.571
+   ],
+   "fr_ko_curve": [
+    0.545,
+    0.543,
+    0.579,
+    0.505,
+    0.402,
+    0.531,
+    0.41,
+    0.417,
+    0.523,
+    0.621
+   ],
+   "fr_reversal_gain": 0.035,
+   "fr_ko_reversal_gain": 0.048,
+   "fr_late": 0.466,
+   "fr_ko_late": 0.522,
+   "fr_eating": 0.25,
+   "lineage": "ctl_s2"
+  },
+  {
+   "t": 100000,
+   "garden_pop": 697,
+   "intake_intact": 0.0188,
+   "intake_ratio_vision": 0.0396,
+   "intake_ratio_plasticity": 0.7117,
+   "selectivity_intact": 0.6109,
+   "selectivity_no_plasticity": 0.5561,
+   "fr_curve": [
+    0.547,
+    0.507,
+    0.512,
+    0.504,
+    0.537,
+    0.439,
+    0.501,
+    0.544,
+    0.438,
+    0.457
+   ],
+   "fr_ko_curve": [
+    0.554,
+    0.506,
+    0.492,
+    0.598,
+    0.41,
+    0.511,
+    0.366,
+    0.565,
+    0.456,
+    0.501
+   ],
+   "fr_reversal_gain": 0.007,
+   "fr_ko_reversal_gain": -0.037,
+   "fr_late": 0.487,
+   "fr_ko_late": 0.485,
+   "fr_eating": 0.547,
+   "lineage": "sal_s1"
+  },
+  {
+   "t": 200000,
+   "garden_pop": 734,
+   "intake_intact": 0.0172,
+   "intake_ratio_vision": 0.0179,
+   "intake_ratio_plasticity": 0.4979,
+   "selectivity_intact": 0.6009,
+   "selectivity_no_plasticity": 0.5468,
+   "fr_curve": [
+    0.549,
+    0.57,
+    0.473,
+    0.596,
+    0.506,
+    0.421,
+    0.545,
+    0.439,
+    0.325,
+    0.369
+   ],
+   "fr_ko_curve": [
+    0.517,
+    0.467,
+    0.416,
+    0.403,
+    0.458,
+    0.144,
+    0.543,
+    0.614,
+    0.457,
+    0.481
+   ],
+   "fr_reversal_gain": -0.076,
+   "fr_ko_reversal_gain": 0.327,
+   "fr_late": 0.442,
+   "fr_ko_late": 0.448,
+   "fr_eating": 0.459,
+   "lineage": "sal_s1_cont"
+  },
+  {
+   "t": 100000,
+   "garden_pop": 713,
+   "intake_intact": 0.0142,
+   "intake_ratio_vision": 0.2081,
+   "intake_ratio_plasticity": 0.6721,
+   "selectivity_intact": 0.6503,
+   "selectivity_no_plasticity": 0.6374,
+   "fr_curve": [
+    0.536,
+    0.51,
+    0.492,
+    0.558,
+    0.507,
+    0.419,
+    0.497,
+    0.409,
+    0.596,
+    0.605
+   ],
+   "fr_ko_curve": [
+    0.501,
+    0.508,
+    0.532,
+    0.47,
+    0.54,
+    0.523,
+    0.506,
+    0.461,
+    0.498,
+    0.48
+   ],
+   "fr_reversal_gain": 0.182,
+   "fr_ko_reversal_gain": -0.034,
+   "fr_late": 0.569,
+   "fr_ko_late": 0.498,
+   "fr_eating": 0.798,
+   "lineage": "sal_s2"
+  },
+  {
+   "t": 200000,
+   "garden_pop": 807,
+   "intake_intact": 0.0145,
+   "intake_ratio_vision": 0.8108,
+   "intake_ratio_plasticity": 1.0178,
+   "selectivity_intact": 0.5997,
+   "selectivity_no_plasticity": 0.5827,
+   "fr_curve": [
+    0.499,
+    0.562,
+    0.604,
+    0.641,
+    0.666,
+    0.394,
+    0.453,
+    0.519,
+    0.536,
+    0.571
+   ],
+   "fr_ko_curve": [
+    0.463,
+    0.51,
+    0.541,
+    0.526,
+    0.477,
+    0.505,
+    0.484,
+    0.446,
+    0.487,
+    0.505
+   ],
+   "fr_reversal_gain": 0.159,
+   "fr_ko_reversal_gain": -0.009,
+   "fr_late": 0.604,
+   "fr_ko_late": 0.499,
+   "fr_eating": 0.873,
+   "lineage": "sal_s2_cont"
+  }
+ ],
+ "hoarding": {
+  "fixed_density_reserve_diff_cacher_minus_reflex": {
+   "global_amp0.9_cap6": -1.078,
+   "global_amp0.9_cap4": -0.516,
+   "hemispheres_amp0.45_cap6": -0.552
+  },
+  "winter_survival": {
+   "hemispheres_amp0.45_cap6": {
+    "reflex": [
+     0.966,
+     0.971
+    ],
+    "cacher": [
+     0.941,
+     0.926
+    ]
+   },
+   "global_amp0.7_cap6": {
+    "reflex": [
+     0.054,
+     0.022
+    ],
+    "cacher": [
+     0.0,
+     0.006
+    ]
+   },
+   "global_amp0.9_cap6": {
+    "reflex": [
+     0.0,
+     0.0
+    ],
+    "cacher": [
+     0.0,
+     0.0
+    ]
+   },
+   "global_amp0.9_cap3": {
+    "reflex": [
+     0.0,
+     0.0
+    ],
+    "cacher": [
+     0.0,
+     0.0
+    ]
+   }
+  }
+ },
+ "chamber_assay_diagnosis": {
+  "old_choice_rate": [
+   0.09,
+   0.16
+  ],
+  "free_foraging_eating_frac_t100k": {
+   "sal_s2": 0.8,
+   "sal_s1": 0.55,
+   "ctl_s2": 0.25
+  },
+  "learned_offset_vs_innate_salience": {
+   "sal_s1": {
+    "innate": [
+     -1.27,
+     -1.15
+    ],
+    "learned_abs": [
+     0.258,
+     0.531
+    ]
+   },
+   "sal_s2": {
+    "innate": [
+     -0.06,
+     -1.02
+    ],
+    "learned_abs": [
+     0.132,
+     0.7
+    ]
+   }
+  }
+ }
+}

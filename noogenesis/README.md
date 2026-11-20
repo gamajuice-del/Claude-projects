@@ -39,6 +39,11 @@ own: nothing in it rewards intelligence. Organisms just try to stay alive and re
 
 ## Status (details in `docs/RESULTS.md`)
 
+**Round 4.** Reversal learning passes a controlled, knock-out-checked assay in one
+lineage, at two time points. In the other lineage, learning is now worth half of food
+intake. Hoarding (memory under scarce winters) doesn't pay in any world tried, so memory
+remains unrewarded across 15 ecology variants.
+
 **Round 3.** *Lifetime learning* has evolved. With patchy food species that alternate
 between nutritious and toxic, organisms evolved a dopamine-like value-learning system
 (plastic attention/salience). Their learned value of each species tracks which one is

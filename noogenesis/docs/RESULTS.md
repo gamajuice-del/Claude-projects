@@ -1,6 +1,11 @@
 # Results from the prototype (CPU)
 
-> **Latest (Round 3, §8):** *lifetime learning* has evolved. In both learning seeds the
+> **Latest (Round 4, §9):** reversal learning now shows up in a controlled assay (one
+> lineage, two time points). Learning has become worth up to *half* of food intake in the
+> other lineage, so the two lineages learn for different purposes. Hoarding (memory under
+> seasonal scarcity) does not pay in any world tried.
+>
+> **Round 3 (§8):** *lifetime learning* has evolved. In both learning seeds the
 > learned value of each food species tracks which one is currently nutritious (r = 0.93–0.94
 > at a ~50-step lag), and switching learning off costs ~9% of intake. Spatial memory still
 > does not pay in any ecology tried (11 variants).
@@ -476,3 +481,98 @@ What this shows:
 internal quantities these organisms have. They are learned, they track the world, and
 they are about something ("this species is good to eat now"). They are the first
 candidate referents for words.
+
+
+---
+
+## 9. Round 4: measuring learning properly; hoarding
+
+Data: `round4.json`. Code: `assays.free_reversal`, `scripts/learning_garden.py`,
+`oracles.{Cacher, survival}`, physics knobs `energy_cap` and `season_global`.
+
+### 9.1 Why the chamber reversal assay saw nothing
+
+The original assay ended each trial at the first bite, and subjects bit in only 9–16%
+of trials. A learner therefore got zero to two learning events per phase, against about
+100 between switches in the wild. The assay was starving learners of experience. It is
+replaced by **free-foraging reversal**: each block the chamber is restocked with 6 items
+of each species at random places; one is nutritious (+1) and one harmful (−0.5); the
+contingency reverses halfway through 10 blocks of 60 steps. The subject lives through all
+blocks, starting contingencies are counterbalanced, and knock-out subjects are the
+control. Subjects now eat in 23–87% of blocks.
+
+### 9.2 Learning, measured in a common garden
+
+Archived genomes were regrown in a fresh world with full toxicity and allowed one
+toxicity cycle (700 steps) to live and learn. The continuation runs were stopped at
+~210k steps by a session interruption, so the "200k" rows use the 200k archive.
+
+| Lineage | Steps | Blinded intake | Intake, learning off | Diet selectivity (on / off) | Free reversal, late accuracy (on / off) | Recovery after reversal (on / off) |
+|---|---|---|---|---|---|---|
+| Control 1 | 100k | 0.79 | 0.98 | 0.59 / 0.60 | 0.54 / 0.56 | −0.05 / +0.04 |
+| Control 2 | 100k | 0.32 | 0.99 | 0.63 / 0.63 | 0.47 / 0.52 | +0.04 / +0.05 |
+| Learning 1 | 100k | 0.04 | 0.71 | 0.61 / 0.56 | 0.49 / 0.49 | +0.01 / −0.04 |
+| Learning 1 | 200k | 0.02 | **0.50** | 0.60 / 0.55 | 0.44 / 0.45 | −0.08 / +0.33 † |
+| Learning 2 | 100k | 0.21 | 0.67 | 0.65 / 0.64 | **0.57 / 0.50** | **+0.18 / −0.03** |
+| Learning 2 | 200k | 0.81 | 1.02 | 0.60 / 0.58 | **0.60 / 0.50** | **+0.16 / −0.01** |
+
+† Few subject-blocks with eating; treat as noise.
+
+- **Reversal learning is detectable in a controlled assay** for lineage 2, at both time
+  points. After the contingency flips, intact subjects recover (+0.16 to +0.18) and reach
+  0.57–0.60 late accuracy; knock-outs stay at chance (0.50). This is the first
+  comparative-psychology-style demonstration of lifetime learning in these organisms.
+- **Lineage 1 learns for a different purpose.** By 200k steps, switching learning off
+  costs **half** of its food intake, more than in any lineage so far. Its selectivity
+  gain is +0.05, but the chamber assay shows no reversal. Its learning appears to tune
+  general edibility and attention rather than species identity.
+- **Lineage 2 changed strategy between 100k and 200k.** It became far less
+  vision-dependent (blinded intake 0.21 → 0.81), and learning stopped mattering for raw
+  intake (0.67 → 1.02), yet the reversal ability persisted. Lineages are not converging
+  on one design.
+- Under full toxicity in a common garden, learning matters much more (−29% to −50%
+  intake) than in the lineages' own, less dense worlds (−9%). Dependence on a faculty is
+  context-dependent; report the context.
+- Learned salience offsets are substantial (20–70% of innate salience, sometimes
+  saturating). The limit on behavioural impact is steering competence, not value
+  learning: avoiding a toxic species means leaving its patch.
+
+### 9.3 Memory under seasonal scarcity (hoarding): does not pay
+
+Two physical loopholes made hoarding pointless, and both were closed as options:
+- **Bodies stored unlimited energy for free.** `energy_cap` now limits fat stores (energy
+  above capacity × size is lost as heat; enforced in metabolism, at birth and at spawn;
+  tested).
+- **Winter could be escaped by migrating**, because the hemispheres had opposite seasons.
+  `season_global` now synchronises them.
+
+A hoarder oracle picks up food when nearly full, caches it underfoot (invisible beyond
+range 1), remembers where, and returns when hungry.
+
+| World | Reflex | Hoarder |
+|---|---|---|
+| Fixed density, mean energy reserve, 3 worlds | — | 0.5–1.1 *lower* |
+| Winter survival, opposite hemispheres | 93–97% | 93–94% |
+| Winter survival, global moderate winter | 2–5% | 0–1% |
+| Winter survival, global harsh winter | 0% | 0% |
+
+The likely reason is ecological, not oracle tuning: a population at carrying capacity
+has no surplus to store. Hoarding animals exploit gluts (mast years, seasonal
+superabundance) that saturate consumers. Together with §8.1, **memory has not paid in 15
+world variants of two kinds** (spatial recall and hoarding). The next candidates are
+resource gluts (pulsed superabundance), defended territories, and moving targets
+(pursuit across occlusion).
+
+Instrument bugs fixed along the way:
+- Oracle private state was indexed by array slot, which breaks when deaths repack the
+  population. It is now keyed by individual identity.
+- The survival harness first let random lifespan genes kill test organisms of old age.
+  Lifespan is now fixed there, so starvation is the only cause of death.
+
+### 9.4 Ladder status
+
+| Rung | Status |
+|---|---|
+| 1 perception | ✔ |
+| 2 working / spatial memory | ✘ not paid by any ecology tried (15 variants) |
+| 3 lifetime learning | ✔ evolved in 2/2 lineages; worth up to 50% of intake; reversal learning passes a controlled assay in 1/2 lineages, at 2 time points |
