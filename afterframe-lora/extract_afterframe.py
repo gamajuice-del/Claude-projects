@@ -311,6 +311,8 @@ def require_owner(client: AfterframeClient, out: Path | None = None, probe_id: s
     info = client.start_session()
     if out is not None:
         rec = {"checked_at": int(time.time() * 1000), "session_admin": bool(info.get("admin"))}
+        if info.get("admin") and info.get("id"):
+            rec["owner_visitor_id"] = info["id"]   # lets later stages resolve owner-uploads offline
         if not info.get("admin") and probe_id:
             try:
                 client.post_prompt(probe_id)
@@ -405,9 +407,16 @@ class PermissionPolicy:
             ids |= {ln.strip().lower() for ln in Path(args.uploaders_file).read_text().splitlines()
                     if re.fullmatch(r"[0-9a-fA-F]{64}", ln.strip())}
         if mode == "owner-uploads" and not ids:
-            if client is None or client.session_info is None:
-                raise SystemExit("owner-uploads needs --uploader-id or an owner session")
-            ids.add(client.session_info["id"])
+            if client is not None and client.session_info is not None:
+                ids.add(client.session_info["id"])
+            else:   # prepare_dataset.py has no session: use the owner id recorded by the prompts stage
+                data_dir = getattr(args, "data", None) or getattr(args, "out", None)
+                access = Path(data_dir or ".") / "state" / "prompt_access.json"
+                owner = json.loads(access.read_text()).get("owner_visitor_id") if access.exists() else None
+                if not owner:
+                    raise SystemExit("owner-uploads needs --uploader-id <your 64-hex visitor id> "
+                                     "(Afterframe > Settings > Your visitor ID)")
+                ids.add(owner)
         if mode in ("allowlist", "owner-uploads") and not ids:
             raise SystemExit("the permission policy resolved to an empty uploader list")
         return cls(mode, {i.lower() for i in ids})

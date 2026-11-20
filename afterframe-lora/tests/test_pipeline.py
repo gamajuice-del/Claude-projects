@@ -133,8 +133,10 @@ def test_extract(site, work):
 
 def test_prepare(work):
     out = work / "dataset"
+    access = json.loads((work / "data" / "state" / "prompt_access.json").read_text())
+    assert access["owner_visitor_id"] == "a" * 64          # recorded by the prompts stage
     prep.main(["--data", str(work / "data"), "--out", str(out), "--permission-policy", "owner-uploads",
-               "--uploader-id", "a" * 64, "--val-fraction", "0.34", "--no-group-identical-prompts",
+               "--val-fraction", "0.34", "--no-group-identical-prompts",
                "--exclude-flags", "low_resolution,signature_failed", "--min-seconds", "1"])
     lines = (out / "dataset_manifest.jsonl").read_text(encoding="utf-8").splitlines()
     header, rows = json.loads(lines[0]), [json.loads(l) for l in lines[1:]]
