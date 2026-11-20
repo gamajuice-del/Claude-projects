@@ -24,7 +24,8 @@ from collections import defaultdict
 import numpy as np
 
 from .backend import fsum, get_xp, scatter_add, to_numpy
-from .brain import (brain_forward, brain_spec, develop, forward_model_predict,
+from .brain import (arc_learning_step, brain_forward, brain_spec, develop,
+                    forward_model_predict,
                     forward_model_update, inherit_fast_weights,
                     inherit_slot_map, plasticity)
 from .config import (ATTACK, BUILD, DROP, EAT, FWD, LEFT, NA, NOOP, PICK,
@@ -63,6 +64,7 @@ class Agents:
             "invest": ((), f), "eff": ((cfg.K_max + 1,), f), "color": ((3,), f),
             "compat": ((), f), "eta_pred": ((), f), "temp": ((), f),
             "epi_rho": ((), f), "share": ((), f),
+            "arc_eta": ((), f), "arc_dE": ((), f), "arc_mod": ((), f), "arc_trace": ((), f),
         }
         spec.update(brain_spec(cfg))
         self.spec = spec
@@ -129,13 +131,14 @@ class World:
         self.plastic_on = True       # assays can knock plasticity out
         self.hook = None             # probe(world, n, Ne, Xv, Xo, h_new, out) before physics
         self.lesion = None           # None | "vision" | "sound" | "memory"
+        self.policy = None           # oracle strategy f(world, n, Xv) -> actions, replaces brains
         self.Ne = 1
         self.hot = self.hrng.uniform(0, 1, (K, cfg.n_hotspots, 2)) * np.array([H, W])
         self.hot_dir = self.hrng.uniform(0, 2 * np.pi, (K, cfg.n_hotspots))
         self.climate = np.array([1.0, 1.0, 20.0])
         sites = (self.hrng.random((H, W)) < cfg.site_density).astype(np.float32)
         # two-tier vegetation: low-yield grass everywhere, rich fruit at fixed sites
-        self.cap = xp.asarray(cfg.grass_cap + (1.0 - cfg.grass_cap) * sites)
+        self.cap = xp.asarray(cfg.grass_cap + (getattr(cfg, "fruit_cap", 1.0) - cfg.grass_cap) * sites)
         yy, xx = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
         self._yy, self._xx = xp.asarray(yy, f32), xp.asarray(xx, f32)
         self.light = xp.ones((H, 1), f32)
@@ -173,6 +176,8 @@ class World:
         self.offsets = xp.asarray(off)
         self.sound_offsets = xp.asarray(snd)
         self.near_mask = xp.asarray((cheb <= 1).astype(np.float32))
+        self._pf = xp.asarray(np.array([f for f, s in PATCH], np.float32))
+        self._ps = xp.asarray(np.array([s for f, s in PATCH], np.float32))
         self.night_masks = [xp.asarray((cheb <= r).astype(np.float32)) for r in range(3)]
         self.F_dir = xp.asarray(F_DIR)
         self.eyeNA = xp.eye(NA, dtype=np.float32)
@@ -307,6 +312,9 @@ class World:
         iy = (pos[:, 0:1] + off[:, :, 0]) % H
         ix = (pos[:, 1:2] + off[:, :, 1]) % W
         Xv = xp.ascontiguousarray(Fd[:, iy, ix].transpose(1, 0, 2))  # (n, C, P)
+        if getattr(cfg, "sensor_mode", "linear") == "weber":   # food receptors: veg, meat, cache
+            x0 = cfg.weber_x0
+            Xv[:, :K + 2] = xp.log1p(Xv[:, :K + 2] / x0) / math.log1p(1.0 / x0)
         Xv[:, K + 1, :] *= self.near_mask
         if self.is_night:
             Xv *= self.night_masks[self.physics.night_radius]
@@ -323,6 +331,28 @@ class World:
         mean3 = (Xv * self.near_mask).sum(-1) / 9.0
         target = xp.concatenate([mean3, Xv[:, :, FRONT_P], intero6, snd[:, :cfg.S_max]], 1)
         return Xv, snd, intero6, target
+
+    def _tectum(self, Xv, n):
+        """Optic-tectum analogue: a retinotopic salience map (genetically weighted
+        sum of visual channels at each location) with soft winner-take-all over
+        the surround. Outputs the attended egocentric location (f*, s*), its
+        salience, the salience underfoot, and their difference."""
+        xp, A = self.xp, self.agents
+        w = A["genome"][:n, self.lay.gs["sal_w"]]                     # (n, C)
+        beta = xp.exp(xp.clip(A["genome"][:n, self.lay.gs["sal_beta"].start], -2.0, 3.0))
+        sal = (Xv * w[:, :, None]).sum(1)                              # (n, P)
+        own = sal[:, CENTER_P]
+        z = beta[:, None] * sal
+        z[:, CENTER_P] = -1e9
+        z = z - z.max(1, keepdims=True)
+        att = xp.exp(z)
+        att /= att.sum(1, keepdims=True)
+        fs, ss = self._pf, self._ps
+        f_att = (att * fs).sum(1) / 2.0
+        s_att = (att * ss).sum(1) / 2.0
+        m = (att * sal).sum(1)
+        self.last_attention = att
+        return xp.stack([f_att, s_att, m, own, m - own], 1).astype(np.float32)
 
     # ------------------------------------------------------------------ step
     def step(self, record: bool = False):
@@ -353,39 +383,67 @@ class World:
                 intero6[:, 0:2], age_f[:, None], intero6[:, 2:5], intero6[:, 5:6],
                 surprise[:, None], xp.ones((n, 1), f32), 0.5 * nz[:n, None], A["color"][:n]], 1)
             Xo = xp.concatenate([snd, intero, self.eyeNA[A["last_action"][:n]]], 1)
-            les = getattr(self, "lesion", None)      # lesion studies (metrics.lesion_study)
-            if les == "vision":
-                Xv = xp.zeros_like(Xv)
-            elif les == "sound":
-                Xo[:, :5 * cfg.S_max] = 0
-            elif les == "memory":                    # reflex-only: no carried-over state
-                A["h"][:n] = 0
-                A["F"][:n] = 0
-                A["alpha"][:n] = 1.0
-            h_prev = A["h"][:n, :Ne].copy()
-            h_new, out = brain_forward(xp, A.arr, n, Ne, Xv, Xo, self.plastic_on)
-            S, P_ = cfg.S_max, cfg.P_max
-            if self.hook is not None:
-                self.hook(self, n, Ne, Xv, Xo, h_new, out)
-            mod = xp.tanh(out[:, NA + S + P_:])
-            if self.plastic_on:
-                plasticity(xp, A.arr, n, Ne, h_prev, h_new, mod, cfg.F_clip, self._buf)
-            A["h"][:n, :Ne] = h_new
-            A["pred"][:n] = forward_model_predict(xp, A.arr, n, Ne)
+            if getattr(cfg, "tectum", False):
+                Xo = xp.concatenate([Xo, self._tectum(Xv, n)], 1)
+            policy = getattr(self, "policy", None)  # oracle strategies (oracles.py)
+            if policy is not None and getattr(policy, "needs_brain", False):
+                self._brain_act = None               # brains run; policy may override some
+            if policy is None or getattr(policy, "needs_brain", False):
+                les = getattr(self, "lesion", None)      # lesion studies (metrics.lesion_study)
+                if les == "vision":
+                    Xv = xp.zeros_like(Xv)
+                elif les == "sound":
+                    Xo[:, :5 * cfg.S_max] = 0
+                elif les == "memory":                    # reflex-only: no carried-over state
+                    A["h"][:n] = 0
+                    A["F"][:n] = 0
+                    A["alpha"][:n] = 1.0
+                h_prev = A["h"][:n, :Ne].copy()
+                aux = {} if getattr(cfg, "arc_learning", False) else None
+                h_new, out = brain_forward(xp, A.arr, n, Ne, Xv, Xo, self.plastic_on,
+                                           getattr(cfg, "bilateral", False),
+                                           getattr(cfg, "reflex_arcs", False), aux,
+                                           getattr(cfg, "arc_features", "rf"))
+                S, P_ = cfg.S_max, cfg.P_max
+                if self.hook is not None:
+                    self.hook(self, n, Ne, Xv, Xo, h_new, out)
+                mod = xp.tanh(out[:, NA + S + P_:])
+                if self.plastic_on:
+                    plasticity(xp, A.arr, n, Ne, h_prev, h_new, mod, cfg.F_clip, self._buf)
+                A["h"][:n, :Ne] = h_new
+                A["pred"][:n] = forward_model_predict(xp, A.arr, n, Ne)
 
-            # ---- decode outputs
-            om = A["omask"][:n]          # repertoire is fixed at development, so an
-            logits = out[:, :NA] / A["temp"][:n, None] + (om[:, :NA] - 1.0) * 1e9
-            if not self.physics.building:    # unfolding never changes living organisms
-                logits[:, BUILD] = -1e9
-            gumbel = -xp.log(-xp.log(u_g[:n] + 1e-12) + 1e-12)
-            act = xp.argmax(logits + gumbel, 1).astype(np.int32)
-            frozen = A["frozen"][:n]
-            act = xp.where(frozen, NOOP, act).astype(np.int32)
-            s_emit = xp.tanh(out[:, NA:NA + S]) * om[:, NA:NA + S]
-            s_emit[:, self.physics.s_active:] = 0
-            p_emit = om[:, NA + S:NA + S + P_] / (1.0 + xp.exp(-(out[:, NA + S:NA + S + P_] - 2.0)))
-            p_emit[:, self.physics.p_active:] = 0
+                # ---- decode outputs
+                om = A["omask"][:n]          # repertoire is fixed at development, so an
+                logits = out[:, :NA] / A["temp"][:n, None] + (om[:, :NA] - 1.0) * 1e9
+                if not self.physics.building:    # unfolding never changes living organisms
+                    logits[:, BUILD] = -1e9
+                gumbel = -xp.log(-xp.log(u_g[:n] + 1e-12) + 1e-12)
+                act = xp.argmax(logits + gumbel, 1).astype(np.int32)
+                if aux is not None and self.plastic_on and "s" in aux:
+                    m_arc = arc_learning_step(
+                        xp, A.arr, n, aux["s"], aux.get("sm"), logits, act, mod[:, 0],
+                        A["dE"][:n], (A["arc_eta"][:n], A["arc_dE"][:n], A["arc_mod"][:n],
+                                      A["arc_trace"][:n]), getattr(cfg, "arc_rpe", True))
+                    self.counters["arc_m_abs"] += fsum(xp.abs(m_arc))
+                frozen = A["frozen"][:n]
+                act = xp.where(frozen, NOOP, act).astype(np.int32)
+                s_emit = xp.tanh(out[:, NA:NA + S]) * om[:, NA:NA + S]
+                s_emit[:, self.physics.s_active:] = 0
+                p_emit = om[:, NA + S:NA + S + P_] / (1.0 + xp.exp(-(out[:, NA + S:NA + S + P_] - 2.0)))
+                p_emit[:, self.physics.p_active:] = 0
+                if policy is not None:               # mixed: -1 = let the brain decide
+                    pa = policy(self, n, Xv).astype(np.int32)
+                    act = xp.where(pa >= 0, pa, act).astype(np.int32)
+                    act = xp.where(A["frozen"][:n], NOOP, act).astype(np.int32)
+            else:                                    # scripted: no brain, no emissions
+                S, P_ = cfg.S_max, cfg.P_max
+                act = policy(self, n, Xv).astype(np.int32)
+                act = xp.where(A["frozen"][:n], NOOP, act).astype(np.int32)
+                h_new = xp.zeros((n, Ne), f32)
+                out = xp.zeros((n, NA + S + P_ + cfg.M_mod), f32)
+                s_emit = xp.zeros((n, S), f32)
+                p_emit = xp.zeros((n, P_), f32)
             if record:
                 rec = dict(Xv=Xv, Xo=Xo, h=h_new, out=out, act=act,
                            s_emit=s_emit, pos=A["pos"][:n].copy(),
@@ -560,7 +618,8 @@ class World:
             return None
         H, W, n = cfg.H, cfg.W, A.n
         energy = A["energy"][:n]
-        cand = (act == REPRO) & (A["age"][:n] >= cfg.min_repro_age) & \
+        wants = (act == REPRO) | bool(getattr(cfg, "auto_repro", False))
+        cand = wants & (A["age"][:n] >= cfg.min_repro_age) & \
                (energy >= A["repro_thr"][:n]) & ~A["frozen"][:n]
         ci = xp.nonzero(cand)[0]
         if ci.size == 0:
@@ -592,7 +651,7 @@ class World:
         child = g_par.copy()
         partner = self._front[ci]
         pidx = xp.maximum(partner, 0)
-        sexual = (partner >= 0) & (act[pidx] == REPRO)
+        sexual = (partner >= 0) & (act[pidx] == REPRO) & (act[ci] == REPRO)
         if bool(sexual.any()):
             close = genome_distance(xp, g_par, A["genome"][pidx]) < A["compat"][ci]
             sexual &= close
@@ -628,6 +687,7 @@ class World:
         smap = inherit_slot_map(xp, self.lay, A["genome"][ci], child)
         rows["F"], rows["P"] = inherit_fast_weights(xp, A["F"][ci], A["P"][ci], smap,
                                                     A["epi_rho"][ci])
+        rows["arc_F"] = A["arc_F"][ci] * A["epi_rho"][ci][:, None, None]   # retinotopic: slot-stable
         b = int(ci.size)
         rows.update(
             genome=child, pos=xp.stack([by, bx], 1).astype(np.int32),
@@ -652,6 +712,8 @@ class World:
                 + cfg.c_wiring * A["wiring"][:n]
                 + cfg.c_plastic * A["plast_sum"][:n]
                 + cfg.c_forward * A["eta_pred"][:n] / 0.05
+                + (getattr(cfg, "c_arc_learn", 0.0) * A["arc_eta"][:n] / 0.2
+                   if getattr(cfg, "arc_learning", False) else 0.0)
                 + cfg.c_carry * A["carry"][:n].sum(1)
                 + cfg.c_sound * (s_emit ** 2).sum(1)
                 + cfg.c_pher * p_emit.sum(1)
@@ -806,6 +868,8 @@ class World:
                 alpha_mean=float((g("alpha") * g("mask")).sum(1).mean() / max(1, g("n_neurons").mean())),
                 age=float(g("age").mean()),
                 deprivation=float((g("energy") < 0.5).mean()),
+                log_sigma=float(to_numpy(A["genome"][:n, self.lay.gs["log_sigma"].start]).mean()),
+                temp=float(g("temp").mean()),
                 pain_mean=float(g("pain").mean()),
                 types_active=float((g("n_neurons") > 0).mean() and
                                    (to_numpy(self.lay.t(A["genome"][:n], "count")[:, :, 0]) >= 1).sum(1).mean()),

@@ -206,3 +206,33 @@ def test_archipelago_bandit_prefers_active_island():
     arch.run(1, budget=40)
     share = arch.alloc_history[-1]
     assert share[0] > share[1] >= 0.05 / 2
+
+
+@pytest.mark.parametrize("rf_mode,tectum,arcs", [("pixel", False, False), ("gaussian", False, False),
+                                                 ("pixel", True, False), ("pixel", False, True)])
+def test_bilateral_brain_is_mirror_symmetric(rf_mode, tectum, arcs):
+    """With developmental noise off and paired neurons, mirroring the world
+    (vision, sound, efference copy) must swap the left/right turn logits and
+    leave every other output unchanged."""
+    from noogenesis.brain import _MIRROR_P, _mirror_other, _mirror_sign, brain_forward, develop
+    from noogenesis.config import LEFT, RIGHT
+    cfg = small(bilateral=True, rf_mode=rf_mode, tectum=tectum, reflex_arcs=arcs)
+    lay = GenomeLayout(cfg)
+    rng = np.random.default_rng(7)
+    phys = Physics(k_active=4, s_active=4, p_active=2, building=True)
+    g = random_genomes(np, rng, lay, 6, lay.mutable_mask(phys))
+    T = lay.types(g)
+    T[:, :, lay.ts["dev_noise"].start] = -20.0
+    T[:, :, lay.ts["count"].start] = np.where(T[:, :, lay.ts["count"].start] >= 1, 4.0, -1.0)
+    B = develop(np, rng, lay, g, phys)
+    n, Ne = 6, int(B["n_neurons"].max())
+    from noogenesis.config import vision_channels, n_other_inputs
+    Xv = rng.random((n, vision_channels(cfg), 25)).astype(np.float32)
+    Xo = rng.standard_normal((n, n_other_inputs(cfg))).astype(np.float32)
+    _, out = brain_forward(np, B, n, Ne, Xv, Xo, True, True, arcs)
+    _, outm = brain_forward(np, B, n, Ne, Xv[:, :, _MIRROR_P], Xo[:, _mirror_other(cfg)] * _mirror_sign(cfg),
+                            True, True, arcs)
+    assert np.allclose(out[:, LEFT], outm[:, RIGHT], atol=1e-4)
+    assert np.allclose(out[:, RIGHT], outm[:, LEFT], atol=1e-4)
+    keep = [i for i in range(out.shape[1]) if i not in (LEFT, RIGHT)]
+    assert np.allclose(out[:, keep], outm[:, keep], atol=1e-4)

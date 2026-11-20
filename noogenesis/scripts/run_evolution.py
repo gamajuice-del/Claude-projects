@@ -48,10 +48,19 @@ def main():
     ap.add_argument("--log-every", type=int, default=250)
     ap.add_argument("--out", default=None)
     ap.add_argument("--save-state", action="store_true")
+    ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
+                    help="override any Config field, e.g. --set rf_mode=gaussian sigma_init=-1.5")
+    ap.add_argument("--archive-every", type=int, default=5000)
     a = ap.parse_args()
 
     cfg = Config(H=a.H, W=a.W, max_agents=a.max_agents, init_agents=a.init_agents,
                  seed=a.seed, device=a.device)
+    over = {}
+    for kv in a.set:
+        k, v = kv.split("=", 1)
+        cur = getattr(cfg, k)
+        over[k] = (v.lower() in ("1", "true", "yes")) if isinstance(cur, bool) else type(cur)(v)
+    cfg = cfg.replace(**over)
     iff = (InvasionScreen(n_probes=a.iff_probes, horizon=a.iff_horizon, every=a.iff_every,
                           seed=a.seed) if a.iff else None)
     if a.out:
@@ -69,7 +78,7 @@ def main():
         return
     sim = Simulation(cfg, out_dir=a.out, unfold_mode=a.unfold, unfold_every=a.unfold_every,
                      iff=iff, log_every=a.log_every, migrate_dir=a.migrate_dir,
-                     island_id=a.island_id)
+                     island_id=a.island_id, archive_every=a.archive_every)
     sim.run(a.steps)
     if a.out:
         sim.welfare.dump(os.path.join(a.out, "welfare.json"))

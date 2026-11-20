@@ -37,14 +37,21 @@ class GenomeLayout:
             ("compat", 1), ("eta_pred", 1), ("temp", 1), ("epi_rho", 1),
             ("share", 1),
         ]
+        if getattr(cfg, "arc_learning", False):  # rate, value coupling (dE, modulator), trace
+            g_fields += [("arc_eta", 1), ("arc_dE", 1), ("arc_mod", 1), ("arc_trace", 1)]
+        if getattr(cfg, "tectum", False):     # what is salient, and how sharp the competition
+            g_fields += [("sal_w", C), ("sal_beta", 1)]
         t_fields = [
             ("count", 1), ("q", cfg.d_aff), ("k", cfg.d_aff), ("w_scale", 1),
             ("bias", 1), ("alpha", 1), ("dev_noise", 1), ("eta", 1),
             ("hebb", 4), ("decay", 1), ("beta", cfg.M_mod + 1),
-            ("vis_chan", cfg.R_vis * C), ("vis_pos", cfg.R_vis * N_PATCH),
+            ("vis_chan", cfg.R_vis * C),
+            ("vis_pos", cfg.R_vis * (3 if getattr(cfg, "rf_mode", "pixel") == "gaussian" else N_PATCH)),
             ("vis_mix", cfg.R_vis), ("in_other", n_other_inputs(cfg)),
             ("in_gain", 1), ("out", n_outputs(cfg)),
         ]
+        if getattr(cfg, "reflex_arcs", False):   # receptive field r of this type -> each action
+            t_fields += [("arc", cfg.R_vis * NA)]
         self.gs, off = {}, 0
         for name, n in g_fields:
             self.gs[name] = slice(off, off + n)
@@ -85,6 +92,9 @@ class GenomeLayout:
         dead_ch = list(range(physics.k_active, cfg.K_max))  # veg channels
         pher0 = cfg.K_max + 1 + 1 + 1 + 3 + 1
         dead_ch += [pher0 + p for p in range(physics.p_active, cfg.P_max)]
+        if "sal_w" in self.gs:
+            for c in dead_ch:
+                m[self.gs["sal_w"].start + c] = False
         so = self.ts["in_other"].start
         oo = self.ts["out"].start
         for g in range(cfg.G_max):
@@ -102,6 +112,9 @@ class GenomeLayout:
                 m[base + oo + NA + cfg.S_max + p] = False
             if not physics.building:
                 m[base + oo + BUILD] = False
+                if "arc" in self.ts:
+                    for r in range(cfg.R_vis):
+                        m[base + self.ts["arc"].start + r * NA + BUILD] = False
         return m
 
 
@@ -117,12 +130,18 @@ def random_genomes(xp, rng, lay: GenomeLayout, n: int, mutable=None):
     enz = G(g, "enzymes")
     enz[:] *= 0.5
     enz[:, -1] -= 1.0                       # most founders are herbivores
-    G(g, "log_sigma")[:] = -2.5 + 0.2 * G(g, "log_sigma")
+    G(g, "log_sigma")[:] = getattr(cfg, "sigma_init", -2.5) + 0.2 * G(g, "log_sigma")
     G(g, "compat")[:] *= 0.5
     G(g, "eta_pred")[:] = G(g, "eta_pred") - 2.0
     G(g, "temp")[:] *= 0.3
     G(g, "epi_rho")[:] = 0.5 * G(g, "epi_rho") - 3.0
     G(g, "share")[:] *= 0.5
+    if "arc_eta" in lay.gs:
+        G(g, "arc_dE")[:] *= 1.0      # value coupling starts random: evolution decides
+        G(g, "arc_mod")[:] *= 0.5
+    if "sal_w" in lay.gs:
+        G(g, "sal_w")[:] *= 0.5
+        G(g, "sal_beta")[:] = 1.0 + 0.3 * G(g, "sal_beta")
 
     T = lay.types(g)
     ts = lay.ts
@@ -140,6 +159,8 @@ def random_genomes(xp, rng, lay: GenomeLayout, n: int, mutable=None):
     T[:, :, ts["beta"]] *= 0.5
     T[:, :, ts["vis_mix"]] = 0.5 + 0.5 * T[:, :, ts["vis_mix"]]
     T[:, :, ts["in_gain"]] *= 0.3
+    if "arc" in ts:
+        T[:, :, ts["arc"]] *= 0.3
     if mutable is not None:
         g[:, ~xp.asarray(mutable)] = 0.0
     return g
@@ -158,7 +179,7 @@ def decode_globals(xp, lay: GenomeLayout, g, k_active: int):
     p = p / p.sum(1, keepdims=True)
     F = cfg.K_max + 1
     eff = xp.minimum(cfg.eff_max, cfg.eff_max * p * F ** cfg.eff_alpha)
-    return dict(
+    out = dict(
         size=size.astype(xp.float32),
         max_age=(300 + 2700 * sg(G("max_age")[:, 0])).astype(xp.float32),
         repro_thr=(1.0 + 9.0 * sg(G("repro_thr")[:, 0])).astype(xp.float32),
@@ -171,6 +192,13 @@ def decode_globals(xp, lay: GenomeLayout, g, k_active: int):
         epi_rho=sg(G("epi_rho")[:, 0]).astype(xp.float32),
         share=(0.05 + 0.45 * sg(G("share")[:, 0])).astype(xp.float32),
     )
+    if "arc_eta" in lay.gs:
+        out.update(
+            arc_eta=(0.2 * sg(G("arc_eta")[:, 0] - 2.0)).astype(xp.float32),
+            arc_dE=G("arc_dE")[:, 0].astype(xp.float32),
+            arc_mod=G("arc_mod")[:, 0].astype(xp.float32),
+            arc_trace=sg(G("arc_trace")[:, 0]).astype(xp.float32))
+    return out
 
 
 def type_counts(xp, lay: GenomeLayout, g):

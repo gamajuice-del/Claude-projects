@@ -51,6 +51,21 @@ class Config:
     p_dup: float = 0.02          # gene-module duplication probability per birth
     p_del: float = 0.01          # module deletion probability per birth
     p_gene: float = 0.08         # per-locus mutation probability
+    rf_mode: str = "pixel"       # "pixel": 25 free weights per receptive field;
+                                 # "gaussian": centre (f0, s0) + width (3 genes)
+    sigma_init: float = -2.5     # initial log mutation step size
+    bilateral: bool = False      # neurons develop in left/right mirror pairs
+    tectum: bool = False         # retinotopic salience map + winner-take-all orienting circuit
+    reflex_arcs: bool = False    # direct (monosynaptic) receptive-field -> action-logit pathway
+    arc_learning: bool = False   # three-factor (dopamine-gated actor) learning on the arcs
+    c_arc_learn: float = 0.002   # energy per step at maximal arc-learning rate
+    arc_features: str = "rf"     # "rf": learn on receptive-field responses; "raw": on the retina
+    arc_rpe: bool = True         # value = energy change minus its running mean (RPE)
+    auto_repro: bool = True      # budding is triggered physiologically (energy >= threshold);
+                                 # the reproduce action then only means "mate"
+    sensor_mode: str = "linear"  # "weber": log-compressive food receptors,
+                                 # log(1 + x/x0)/log(1 + 1/x0), x0 = weber_x0
+    weber_x0: float = 0.03
     tau_sigma: float = 0.2       # self-adaptation rate of the mutation step size
 
     # ---- metabolism (energy per step) ----
@@ -83,6 +98,7 @@ class Config:
     # ---- ecology ----
     site_density: float = 0.08   # fraction of cells that are fruiting sites
     grass_cap: float = 0.25      # biomass cap elsewhere (1.0 everywhere = the dense ecology)
+    fruit_cap: float = 1.0       # biomass cap at fruiting sites
     veg_rate: float = 0.12
     veg_seed: float = 0.002
     veg_diffuse: float = 0.0
@@ -138,8 +154,11 @@ def n_outputs(cfg: Config) -> int:
     return NA + cfg.S_max + cfg.P_max + cfg.M_mod
 
 
+N_TECTUM = 5   # attended (f*, s*), attended salience, salience underfoot, difference
+
+
 def n_other_inputs(cfg: Config) -> int:
-    return N_SOUND_PTS * cfg.S_max + N_INTERO + NA
+    return N_SOUND_PTS * cfg.S_max + N_INTERO + NA + (N_TECTUM if getattr(cfg, "tectum", False) else 0)
 
 
 def n_pred_targets(cfg: Config) -> int:

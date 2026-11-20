@@ -233,8 +233,8 @@ def communication_metrics(world, steps=120, seed=0, n_null=20):
             return _softmax(lg)
 
         p = pol(out)
-        ps = pol(brain_forward(xp, A.arr, n, Ne, Xv, Xs, wd.plastic_on)[1])
-        p0 = pol(brain_forward(xp, A.arr, n, Ne, Xv, X0, wd.plastic_on)[1])
+        ps = pol(brain_forward(xp, A.arr, n, Ne, Xv, Xs, wd.plastic_on, getattr(wd.cfg, "bilateral", False), getattr(wd.cfg, "reflex_arcs", False))[1])
+        p0 = pol(brain_forward(xp, A.arr, n, Ne, Xv, X0, wd.plastic_on, getattr(wd.cfg, "bilateral", False), getattr(wd.cfg, "reflex_arcs", False))[1])
         heard = np.abs(to_numpy(Xo[:, so])).sum(1) > 0.05
         if heard.any():
             jsd_swap.append(_jsd(p, ps)[heard].mean())
