@@ -41,6 +41,7 @@ PATCH = [(f, s) for f in range(VIS_RADIUS, -VIS_RADIUS - 1, -1)
 FRONT_P = PATCH.index((1, 0))
 CENTER_P = PATCH.index((0, 0))
 SOUND_PTS = [(0, 0), (2, 0), (0, 2), (-2, 0), (0, -2)]  # own, front, right, back, left
+N_SOUND_PTS_W = len(SOUND_PTS)
 
 PHENO = ["size", "max_age", "repro_thr", "invest", "eff", "color", "compat",
          "eta_pred", "temp", "epi_rho", "share"]
@@ -69,6 +70,10 @@ class Agents:
             "sal_F": ((vision_channels(cfg),), f),   # learned salience offsets
             "sal_e": ((vision_channels(cfg),), f),   # eligibility: what was recently eaten
             "sal_base": ((), f),                     # running mean of energy change
+            "xm_eta": ((), f), "call_gain": ((cfg.S_max,), f), "m_val": ((), f),
+            "s_prev": ((cfg.S_max,), f),                     # own last emission (corollary discharge)
+            "xm_W": ((vision_channels(cfg), cfg.S_max), f),  # heard sound -> salience
+            "xm_e": ((vision_channels(cfg), cfg.S_max), f),  # its eligibility
         }
         spec.update(brain_spec(cfg))
         self.spec = spec
@@ -359,6 +364,9 @@ class World:
         sy = (pos[:, 0:1] + so[:, :, 0]) % H
         sx = (pos[:, 1:2] + so[:, :, 1]) % W
         snd = self.sound[:, sy, sx].transpose(1, 2, 0).reshape(n, -1)  # (n, 5*S)
+        if getattr(cfg, "corollary_discharge", False):
+            # own emission sits on own cell, so it reaches all 5 sampling points (blur radius 2)
+            snd = snd - xp.tile(self.agents["s_prev"][:n], (1, N_SOUND_PTS_W))
         light = self.light[pos[:, 0], 0]
         energy = A["energy"][:n]
         carry = A["carry"][:n].sum(1)
@@ -384,6 +392,13 @@ class World:
         F = A["sal_F"][:n]
         F += (A["sal_eta"][:n] * m)[:, None] * A["sal_e"][:n] - A["sal_decay"][:n, None] * F
         xp.clip(F, -4.0, 4.0, out=F)
+        A["m_val"][:n] = m
+        if getattr(self.cfg, "cross_modal", False):
+            # cross-modal association: "when I heard s and ate c, it was good/bad"
+            X = A["xm_W"][:n]
+            X += (A["xm_eta"][:n] * m)[:, None, None] * A["xm_e"][:n] \
+                - A["sal_decay"][:n, None, None] * X
+            xp.clip(X, -4.0, 4.0, out=X)
         self.counters["sal_m_abs"] += fsum(xp.abs(m))
 
     def _salience_trace(self, n, Xv, act):
@@ -393,6 +408,11 @@ class World:
         ate = (act == EAT).astype(np.float32)
         K = self.cfg.K_max          # taste senses the food (species, meat, cache), not the eater
         e[:, :K + 2] += ate[:, None] * Xv[:, :K + 2, CENTER_P]
+        if getattr(self.cfg, "cross_modal", False):
+            x = A["xm_e"][:n]
+            x *= 0.5
+            x[:, :K + 2, :] += (ate[:, None] * Xv[:, :K + 2, CENTER_P])[:, :, None] \
+                * self._heard[:, None, :]
 
     def _tectum(self, Xv, n):
         """Optic-tectum analogue: a retinotopic salience map (genetically weighted
@@ -403,6 +423,8 @@ class World:
         w = A["genome"][:n, self.lay.gs["sal_w"]]                     # (n, C)
         if getattr(self.cfg, "sal_learning", False) and self.plastic_on:
             w = w + A["sal_F"][:n]
+            if getattr(self.cfg, "cross_modal", False):   # what I hear changes what is salient
+                w = w + xp.matmul(A["xm_W"][:n], self._heard[:, :, None])[:, :, 0]
         beta = xp.exp(xp.clip(A["genome"][:n, self.lay.gs["sal_beta"].start], -2.0, 3.0))
         sal = (Xv * w[:, :, None]).sum(1)                              # (n, P)
         own = sal[:, CENTER_P]
@@ -447,6 +469,9 @@ class World:
                 intero6[:, 0:2], age_f[:, None], intero6[:, 2:5], intero6[:, 5:6],
                 surprise[:, None], xp.ones((n, 1), f32), 0.5 * nz[:n, None], A["color"][:n]], 1)
             Xo = xp.concatenate([snd, intero, self.eyeNA[A["last_action"][:n]]], 1)
+            deaf = getattr(self, "lesion", None) == "sound"
+            self._heard = (xp.zeros((n, cfg.S_max), f32) if deaf
+                           else snd.reshape(n, 5, cfg.S_max).sum(1))   # what is heard, any direction
             if getattr(cfg, "sal_learning", False) and self.plastic_on:
                 self._salience_learning(n)
             if getattr(cfg, "tectum", False):
@@ -508,6 +533,12 @@ class World:
                 frozen = A["frozen"][:n]
                 act = xp.where(frozen, NOOP, act).astype(np.int32)
                 s_emit = xp.tanh(out[:, NA:NA + S]) * om[:, NA:NA + S]
+                if getattr(cfg, "vocal_value", False) and getattr(cfg, "sal_learning", False):
+                    # value-coupled vocalisation (food / disgust calls), gain is genetic
+                    s_emit = xp.clip(s_emit + A["call_gain"][:n] * A["m_val"][:n, None], -1.0, 1.0)
+                if getattr(self, "mute_tag", None) is not None:   # experiment: silence a group
+                    s_emit = s_emit * (A["tag"][:n] != self.mute_tag)[:, None]
+                A["s_prev"][:n] = s_emit
                 s_emit[:, self.physics.s_active:] = 0
                 p_emit = om[:, NA + S:NA + S + P_] / (1.0 + xp.exp(-(out[:, NA + S:NA + S + P_] - 2.0)))
                 p_emit[:, self.physics.p_active:] = 0
@@ -524,7 +555,7 @@ class World:
                 s_emit = xp.zeros((n, S), f32)
                 p_emit = xp.zeros((n, P_), f32)
             if record:
-                rec = dict(Xv=Xv, Xo=Xo, h=h_new, out=out, act=act,
+                rec = dict(Xv=Xv, Xo=Xo, h=h_new, out=out, act=act, m_val=A["m_val"][:n].copy(),
                            s_emit=s_emit, pos=A["pos"][:n].copy(),
                            heading=A["heading"][:n].copy(),
                            ids=A["id"][:n].copy(), energy=A["energy"][:n].copy())
@@ -772,6 +803,7 @@ class World:
                                                     A["epi_rho"][ci])
         rows["arc_F"] = A["arc_F"][ci] * A["epi_rho"][ci][:, None, None]   # retinotopic: slot-stable
         rows["sal_F"] = A["sal_F"][ci] * A["epi_rho"][ci][:, None]
+        rows["xm_W"] = A["xm_W"][ci] * A["epi_rho"][ci][:, None, None]
         b = int(ci.size)
         rows.update(
             genome=child, pos=xp.stack([by, bx], 1).astype(np.int32),

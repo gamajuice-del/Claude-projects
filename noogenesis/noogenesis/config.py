@@ -60,6 +60,12 @@ class Config:
     reflex_arcs: bool = True     # direct receptive-field / tectum -> action-logit pathways
     arc_learning: bool = False   # three-factor (dopamine-gated actor) learning on the arcs
     sal_learning: bool = False   # plastic tectal salience: value learning from what was eaten
+    cross_modal: bool = False    # plastic heard-sound -> food-salience associations (needs
+                                 # sal_learning): words and calls can come to mean "X is good"
+    corollary_discharge: bool = False  # cancel one's own last emission from one's hearing
+                                       # (as animals suppress self-generated sound)
+    vocal_value: bool = False    # genes coupling the value signal to vocal output (food /
+                                 # disgust calls); whether it is used is up to evolution
     c_sal_learn: float = 0.002   # energy per step at maximal salience-learning rate
     c_arc_learn: float = 0.002   # energy per step at maximal arc-learning rate
     arc_features: str = "rf"     # "rf": learn on receptive-field responses; "raw": on the retina

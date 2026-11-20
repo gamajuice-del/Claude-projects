@@ -311,3 +311,44 @@ def test_free_reversal_runs():
     g = np.asarray(w.agents["genome"][:4])
     r = free_reversal(g, w.cfg, w.physics, blocks=4, block_steps=15, items=3)
     assert len(r["curve"]) == 4 and 0.0 <= r["eating_frac"] <= 1.0
+
+
+def test_cross_modal_association_learns_sound_food_link():
+    """Hearing a sound while eating good food must strengthen sound->food salience,
+    and only food channels may acquire associations."""
+    from noogenesis.config import EAT
+    cfg = small(sal_learning=True, cross_modal=True, init_agents=0, immigration=False,
+                repro=False, deaths=False, growth=False, climate=False)
+    w = World(cfg, populate=False)
+    w.force_day = True
+    g = np.asarray(w.random_genomes(1)).copy()
+    for k, v in (("sal_eta", 6.0), ("sal_dE", 3.0), ("xm_eta", 6.0)):
+        g[:, w.lay.gs[k].start] = v
+    w.spawn(g, positions=np.array([[20, 20]], np.int32), headings=np.array([0], np.int32))
+    w.veg[:] = 0
+    w.veg[0, 20, 20] = 1.0
+    w.policy = lambda wd, n, Xv: np.full(n, EAT)
+    for _ in range(6):
+        w.sound_emit[0, 21, 20] = 1.0          # a constant "word" just behind
+        w.step()
+    X = np.asarray(w.agents["xm_W"][0])
+    K = cfg.K_max
+    assert X[0, 0] > 0 and np.all(X[K + 2:] == 0)
+
+
+def test_corollary_discharge_cancels_own_voice():
+    """With corollary discharge, a lone caller hears nothing of its own call."""
+    cfg = small(corollary_discharge=True, init_agents=0, immigration=False, repro=False,
+                deaths=False, growth=False, climate=False)
+    w = World(cfg, populate=False)
+    w.spawn(w.random_genomes(1), positions=np.array([[20, 20]], np.int32),
+            headings=np.array([0], np.int32))
+    w.policy = lambda wd, n, Xv: np.zeros(n, np.int64)
+    w.step()
+    w.agents["s_prev"][0, 0] = 0.8          # pretend it called...
+    w.sound[:] = 0
+    w.sound_emit[0, 20, 20] = 0.8           # ...and the call is in the air
+    w.sound = __import__("noogenesis.world", fromlist=["_box"])._box(np, w.sound_emit, 2)
+    w.sound_emit[:] = 0
+    _, snd, _, _ = w._sense(w.occupancy(), None)
+    assert np.allclose(snd, 0.0, atol=1e-6)

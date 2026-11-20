@@ -224,3 +224,78 @@ def xenolexicon(world, steps=150, seed=0, min_count=30):
         lex[str(digits)] = dict(count=int(sel.sum()),
                                 lift={nm: round(float(l), 3) for nm, l in zip(names, lift)})
     return lex
+
+
+# ------------------------------------------------- lesson 2: word -> value
+def word_value_lesson(genomes, cfg, physics, blocks=20, block_steps=40, items=6, bad=-0.5,
+                      early=10, seed=0, informative=True, plastic=True):
+    """Does a heard word come to mean "this food species is good now"?
+
+    Each block a chamber is restocked with both species; which one is nutritious
+    is drawn at random per block. A caregiver next to the subject keeps saying
+    word A (species 0 good) or word B (species 1 good). The organism can only
+    exploit the word by associating it, through its own plasticity, with the
+    outcomes of eating. Key measure: diet selectivity in the first `early`
+    steps of a block (before tasting can tell), early vs late blocks.
+    Controls: uninformative words (random), plasticity knock-out."""
+    cw = ChamberWorld(genomes, cfg, physics, seed=seed, plastic=plastic)
+    w, xp, m = cw.w, cw.xp, cw.m
+    rng = np.random.default_rng(seed + 9)
+    sa = max(1, w.physics.s_active)
+    word = np.zeros((2, cfg.S_max), np.float32)
+    word[0, :sa] = np.array([1.0, -1.0, 1.0, -1.0][:sa])
+    word[1] = -word[0]
+    K = cfg.K_max
+    early_sel = np.full((blocks, m), np.nan)
+    all_sel = np.full((blocks, m), np.nan)
+    from .world import F_DIR
+    for b in range(blocks):
+        good = int(rng.integers(0, 2))
+        said = good if informative else int(rng.integers(0, 2))
+        val = np.zeros(K, np.float32)
+        val[good], val[1 - good] = 1.0, bad
+        w.species_value = xp.asarray(val)
+        cw.clear_food()
+        A = w.agents
+        A["energy"][:m] = 4.0
+        A["prev_energy"][:m] = 4.0
+        for sp in (0, 1):
+            for _ in range(items):
+                y, x = cw.cells(rng.integers(-4, 5, size=(m, 2)))
+                w.veg[sp, y, x] = 1.0
+        g_e = np.zeros(m)
+        b_e = np.zeros(m)
+        g_a = np.zeros(m)
+        b_a = np.zeros(m)
+        for t in range(block_steps):
+            pos = to_numpy(A["pos"][:m])
+            hd = to_numpy(A["heading"][:m])
+            by = (pos[:, 0] - F_DIR[hd, 0]) % w.cfg.H          # caregiver just behind
+            bx = (pos[:, 1] - F_DIR[hd, 1]) % w.cfg.W
+            w.sound_emit[:, xp.asarray(by), xp.asarray(bx)] = xp.asarray(
+                np.repeat(word[said][:, None], m, 1))
+            cw.step()
+            le = to_numpy(w.last_eat[:m, :2])
+            g_a += le[:, good]
+            b_a += le[:, 1 - good]
+            if t < early:
+                g_e += le[:, good]
+                b_e += le[:, 1 - good]
+        te, ta = g_e + b_e, g_a + b_a
+        early_sel[b, te > 0.02] = (g_e / np.maximum(te, 1e-9))[te > 0.02]
+        all_sel[b, ta > 0.02] = (g_a / np.maximum(ta, 1e-9))[ta > 0.02]
+    h = blocks // 2
+    return dict(early_first_half=float(np.nanmean(early_sel[:h])),
+                early_second_half=float(np.nanmean(early_sel[h:])),
+                all_second_half=float(np.nanmean(all_sel[h:])),
+                early_curve=[None if np.isnan(v) else float(v) for v in np.nanmean(early_sel, 1)],
+                n_early=int(np.sum(~np.isnan(early_sel[h:]))))
+
+
+def word_lesson_battery(genomes, cfg, physics, seed=0, **kw):
+    full = word_value_lesson(genomes, cfg, physics, seed=seed, **kw)
+    sham = word_value_lesson(genomes, cfg, physics, seed=seed, informative=False, **kw)
+    ko = word_value_lesson(genomes, cfg, physics, seed=seed, plastic=False, **kw)
+    return dict(informative=full, uninformative=sham, knockout=ko,
+                word_benefit=float(full["early_second_half"] - sham["early_second_half"]),
+                word_learning=float(full["early_second_half"] - full["early_first_half"]))

@@ -45,6 +45,10 @@ class GenomeLayout:
                 g_fields += [("tec_arc", 5 * NA)]
             if getattr(cfg, "sal_learning", False):  # rate, value coupling, forgetting
                 g_fields += [("sal_eta", 1), ("sal_dE", 1), ("sal_decay", 1)]
+                if getattr(cfg, "cross_modal", False):
+                    g_fields += [("xm_eta", 1)]
+                if getattr(cfg, "vocal_value", False):
+                    g_fields += [("call_gain", cfg.S_max)]
         t_fields = [
             ("count", 1), ("q", cfg.d_aff), ("k", cfg.d_aff), ("w_scale", 1),
             ("bias", 1), ("alpha", 1), ("dev_noise", 1), ("eta", 1),
@@ -99,6 +103,9 @@ class GenomeLayout:
         if "sal_w" in self.gs:
             for c in dead_ch:
                 m[self.gs["sal_w"].start + c] = False
+        if "call_gain" in self.gs:
+            for d in range(physics.s_active, cfg.S_max):
+                m[self.gs["call_gain"].start + d] = False
         if "tec_arc" in self.gs and not physics.building:
             for i in range(5):
                 m[self.gs["tec_arc"].start + i * NA + BUILD] = False
@@ -151,6 +158,8 @@ def random_genomes(xp, rng, lay: GenomeLayout, n: int, mutable=None):
         G(g, "sal_beta")[:] = 1.0 + 0.3 * G(g, "sal_beta")
     if "tec_arc" in lay.gs:
         G(g, "tec_arc")[:] *= 0.3
+    if "call_gain" in lay.gs:
+        G(g, "call_gain")[:] *= 0.3
 
     T = lay.types(g)
     ts = lay.ts
@@ -202,6 +211,10 @@ def decode_globals(xp, lay: GenomeLayout, g, k_active: int):
         epi_rho=sg(G("epi_rho")[:, 0]).astype(xp.float32),
         share=(0.05 + 0.45 * sg(G("share")[:, 0])).astype(xp.float32),
     )
+    if "xm_eta" in lay.gs:
+        out["xm_eta"] = (0.5 * sg(G("xm_eta")[:, 0] - 2.0)).astype(xp.float32)
+    if "call_gain" in lay.gs:
+        out["call_gain"] = G("call_gain").astype(xp.float32)
     if "sal_eta" in lay.gs:
         out.update(
             sal_eta=(0.5 * sg(G("sal_eta")[:, 0] - 2.0)).astype(xp.float32),
