@@ -74,7 +74,7 @@ def main(work: Path) -> None:
         src = cell.source
         if src.startswith("%%writefile"):
             name, body = src.split("\n", 1)
-            (kaggle / name.split()[1]).write_text(body, encoding="utf-8")
+            (kaggle / Path(name.split()[1]).name).write_text(body, encoding="utf-8")   # /kaggle/working -> work dir
             continue
         if "pip install" in src:
             continue

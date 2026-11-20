@@ -20,7 +20,8 @@ def code(text):
 
 def writefile(name):
     src = (HERE / name).read_text(encoding="utf-8")
-    cells.append(nbf.v4.new_code_cell(f"%%writefile {name}\n" + src))
+    # absolute path: %%writefile otherwise writes to the kernel's current folder, which may not be WORK
+    cells.append(nbf.v4.new_code_cell(f"%%writefile /kaggle/working/{name}\n" + src))
 
 
 md("""
@@ -64,7 +65,7 @@ SESSION_HOURS = 11.5         # Kaggle stops GPU sessions at 12 h; leave margin f
 SAFETY_MINUTES = 25          # reserved at the end of the session
 
 DATASET_ROOTS = ["/kaggle/input"]                # searched for shard_*/manifest.jsonl (prepare_dataset.py output)
-WORK = "/kaggle/working"
+WORK = "/kaggle/working"                         # the %%writefile cells below write here
 OUTPUT_DIR = f"{WORK}/afterframe_run"            # checkpoints, logs, LoRA: saved with the notebook version
 CACHE_DIR = "/tmp/afterframe_cache"              # latents/embeddings: large and temporary; NOT under /kaggle/working
 SHARDS_PER_CHUNK = 1                             # shards cached + trained together (more = better mixing, more disk)
@@ -110,6 +111,10 @@ writefile("prepare_dataset.py")
 
 code(r'''
 import importlib, json, sys, subprocess, glob, shutil
+missing = [f for f in ("afterframe_wan.py", "extract_afterframe.py", "prepare_dataset.py")
+           if not os.path.exists(f"{WORK}/{f}")]
+assert not missing, (f"{missing} not found in {WORK}: run the three %%writefile cells above first "
+                     "(they write to /kaggle/working; keep WORK = '/kaggle/working')")
 sys.path.insert(0, WORK)
 import afterframe_wan as aw
 importlib.reload(aw)
