@@ -1,0 +1,25 @@
+# Afterframe → Wan LoRA pipeline
+# System tools (not pip): ffmpeg and ffprobe on PATH (preinstalled on Kaggle).
+
+# --- extraction + dataset preparation (extract_afterframe.py, prepare_dataset.py) ---
+requests>=2.31
+tqdm>=4.66
+numpy>=1.26
+
+# --- training / inference (afterframe_wan.py, the Kaggle notebook) ---
+# torch: use the CUDA build Kaggle already ships; do not reinstall it on Kaggle.
+torch>=2.4
+diffusers>=0.35.0      # WanPipeline / WanTransformer3DModel / AutoencoderKLWan (tested with 0.43.0)
+transformers>=4.51.0,<6  # UMT5EncoderModel (tested with 5.23.0)
+peft>=0.17.0           # LoRA injection via diffusers' add_adapter (tested with 0.22.0)
+accelerate>=1.0
+safetensors>=0.4.3
+huggingface_hub>=0.30
+bitsandbytes>=0.45     # 8-bit AdamW (Turing-compatible); training falls back to torch AdamW without it
+sentencepiece
+ftfy                   # used by diffusers' Wan prompt_clean
+
+# --- notebook / tests ---
+matplotlib
+nbformat
+pytest
