@@ -1,0 +1,206 @@
+{
+ "rows": [
+  {
+   "ecology": "dense",
+   "seed": 2,
+   "steps": 12000,
+   "pop": 387,
+   "gen_mean": 50.049095607235145,
+   "neurons": 5.651162624359131,
+   "intake_intact": 0.0263,
+   "intake_ratio_vision": 0.7416,
+   "intake_ratio_memory": 0.9395,
+   "intake_ratio_sound": 0.9806,
+   "seconds": 87
+  },
+  {
+   "ecology": "dense",
+   "seed": 3,
+   "steps": 12000,
+   "pop": 290,
+   "gen_mean": 41.296551724137935,
+   "neurons": 8.11379337310791,
+   "intake_intact": 0.0299,
+   "intake_ratio_vision": 0.9659,
+   "intake_ratio_memory": 0.6027,
+   "intake_ratio_sound": 1.0,
+   "seconds": 81
+  },
+  {
+   "ecology": "two_tier",
+   "seed": 2,
+   "steps": 12000,
+   "pop": 304,
+   "gen_mean": 33.05592105263158,
+   "neurons": 12.980262756347656,
+   "intake_intact": 0.0281,
+   "intake_ratio_vision": 0.9981,
+   "intake_ratio_memory": 0.7684,
+   "intake_ratio_sound": 1.0302,
+   "seconds": 61
+  },
+  {
+   "ecology": "two_tier",
+   "seed": 3,
+   "steps": 12000,
+   "pop": 166,
+   "gen_mean": 23.349397590361445,
+   "neurons": 11.192770957946777,
+   "intake_intact": 0.0349,
+   "intake_ratio_vision": 1.0324,
+   "intake_ratio_memory": 0.5098,
+   "intake_ratio_sound": 1.0294,
+   "seconds": 48
+  },
+  {
+   "ecology": "dense",
+   "seed": 4,
+   "steps": 12000,
+   "pop": 192,
+   "gen_mean": 27.385416666666668,
+   "neurons": 7.119791507720947,
+   "intake_intact": 0.0288,
+   "intake_ratio_vision": 1.0093,
+   "intake_ratio_memory": 0.165,
+   "intake_ratio_sound": 0.9322,
+   "seconds": 68
+  },
+  {
+   "ecology": "dense",
+   "seed": 5,
+   "steps": 12000,
+   "pop": 264,
+   "gen_mean": 54.59090909090909,
+   "neurons": 10.102272987365723,
+   "intake_intact": 0.0372,
+   "intake_ratio_vision": 0.9611,
+   "intake_ratio_memory": 0.8227,
+   "intake_ratio_sound": 0.9705,
+   "seconds": 78
+  },
+  {
+   "ecology": "dense",
+   "seed": 6,
+   "steps": 12000,
+   "pop": 437,
+   "gen_mean": 66.35697940503432,
+   "neurons": 4.025171756744385,
+   "intake_intact": 0.0243,
+   "intake_ratio_vision": 0.9711,
+   "intake_ratio_memory": 1.0837,
+   "intake_ratio_sound": 1.0165,
+   "seconds": 79
+  },
+  {
+   "ecology": "dense",
+   "seed": 7,
+   "steps": 12000,
+   "pop": 304,
+   "gen_mean": 54.19736842105263,
+   "neurons": 8.986842155456543,
+   "intake_intact": 0.027,
+   "intake_ratio_vision": 0.9629,
+   "intake_ratio_memory": 0.6287,
+   "intake_ratio_sound": 0.9559,
+   "seconds": 80
+  },
+  {
+   "ecology": "two_tier",
+   "seed": 4,
+   "steps": 12000,
+   "pop": 308,
+   "gen_mean": 37.70454545454545,
+   "neurons": 4.461039066314697,
+   "intake_intact": 0.0265,
+   "intake_ratio_vision": 0.9976,
+   "intake_ratio_memory": 0.847,
+   "intake_ratio_sound": 0.9234,
+   "seconds": 59
+  },
+  {
+   "ecology": "two_tier",
+   "seed": 5,
+   "steps": 12000,
+   "pop": 156,
+   "gen_mean": 34.083333333333336,
+   "neurons": 13.083333015441895,
+   "intake_intact": 0.0297,
+   "intake_ratio_vision": 0.8109,
+   "intake_ratio_memory": 1.1075,
+   "intake_ratio_sound": 0.9831,
+   "seconds": 56
+  },
+  {
+   "ecology": "two_tier",
+   "seed": 6,
+   "steps": 12000,
+   "pop": 194,
+   "gen_mean": 31.40721649484536,
+   "neurons": 10.886597633361816,
+   "intake_intact": 0.0273,
+   "intake_ratio_vision": 0.9932,
+   "intake_ratio_memory": 0.5679,
+   "intake_ratio_sound": 1.0127,
+   "seconds": 57
+  },
+  {
+   "ecology": "two_tier",
+   "seed": 7,
+   "steps": 12000,
+   "pop": 229,
+   "gen_mean": 38.8646288209607,
+   "neurons": 12.982532501220703,
+   "intake_intact": 0.0294,
+   "intake_ratio_vision": 0.8338,
+   "intake_ratio_memory": 0.5071,
+   "intake_ratio_sound": 1.0349,
+   "seconds": 59
+  }
+ ],
+ "stats": {
+  "neurons": {
+   "dense_mean": 7.3331724007924395,
+   "dense_sd": 2.2284284764397375,
+   "two_tier_mean": 10.931089321772257,
+   "two_tier_sd": 3.315771128941527,
+   "perm_p": 0.05411255411255411
+  },
+  "intake_ratio_vision": {
+   "dense_mean": 0.9353166666666667,
+   "dense_sd": 0.09658269858865337,
+   "two_tier_mean": 0.9443333333333334,
+   "two_tier_sd": 0.09580600537892534,
+   "perm_p": 0.9199134199134199
+  },
+  "intake_ratio_memory": {
+   "dense_mean": 0.7070500000000001,
+   "dense_sd": 0.32252720660434214,
+   "two_tier_mean": 0.71795,
+   "two_tier_sd": 0.23716975144398153,
+   "perm_p": 0.961038961038961
+  },
+  "intake_ratio_sound": {
+   "dense_mean": 0.97595,
+   "dense_sd": 0.030298828360185794,
+   "two_tier_mean": 1.0022833333333334,
+   "two_tier_sd": 0.04307572015261807,
+   "perm_p": 0.24891774891774893
+  },
+  "gen_mean": {
+   "dense_mean": 48.979386819172625,
+   "dense_sd": 13.320413035788501,
+   "two_tier_mean": 33.077507124446306,
+   "two_tier_sd": 5.53784072457741,
+   "perm_p": 0.02813852813852814
+  },
+  "pop": {
+   "dense_mean": 312.3333333333333,
+   "dense_sd": 87.75116333511862,
+   "two_tier_mean": 226.16666666666666,
+   "two_tier_sd": 66.84434655725693,
+   "perm_p": 0.09523809523809523
+  }
+ },
+ "n_seeds_per_ecology": 6,
+ "steps": 12000
+}

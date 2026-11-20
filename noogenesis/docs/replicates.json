@@ -1,0 +1,310 @@
+{
+ "rows": [
+  {
+   "run": "A_unfold",
+   "t": 200000,
+   "physics_level": 6,
+   "pop": 504,
+   "neurons": 11.7659,
+   "gen_mean": 413.9921,
+   "intake_intact": 0.017,
+   "intake_ratio_vision": 0.9944,
+   "intake_ratio_memory": 0.3199,
+   "intake_ratio_sound": 0.9959,
+   "neural_k": 9.5312,
+   "neural_mi": 16.6215,
+   "neural_tse": 21.4096,
+   "neural_ais": 6.8303,
+   "neural_phi_wms": -3.3928,
+   "neural_whole": 6.8303,
+   "neural_pr": 1.0663,
+   "neural_n": 32,
+   "comm_signal_mi_bits": 0.0472,
+   "comm_signal_mi_null": 0.0028,
+   "comm_signal_mi_null95": 0.0037,
+   "comm_signal_excess_bits": 0.0444,
+   "comm_listen_jsd_swap": 0.001,
+   "comm_listen_jsd_silence": 0.0006,
+   "comm_frac_vocal": 0.8819,
+   "comm_n_samples": 58696
+  },
+  {
+   "run": "A_s2",
+   "t": 100000,
+   "physics_level": 6,
+   "pop": 754,
+   "neurons": 13.1313,
+   "gen_mean": 271.9483,
+   "intake_intact": 0.0172,
+   "intake_ratio_vision": 0.9945,
+   "intake_ratio_memory": 0.678,
+   "intake_ratio_sound": 1.0033,
+   "neural_k": 9.3125,
+   "neural_mi": 10.5221,
+   "neural_tse": 13.7094,
+   "neural_ais": 2.8671,
+   "neural_phi_wms": -0.5324,
+   "neural_whole": 2.8671,
+   "neural_pr": 1.8669,
+   "neural_n": 32,
+   "comm_signal_mi_bits": 0.1462,
+   "comm_signal_mi_null": 0.0018,
+   "comm_signal_mi_null95": 0.0021,
+   "comm_signal_excess_bits": 0.1445,
+   "comm_listen_jsd_swap": 0.0012,
+   "comm_listen_jsd_silence": 0.0015,
+   "comm_frac_vocal": 0.8864,
+   "comm_n_samples": 93732
+  },
+  {
+   "run": "A_s3",
+   "t": 100000,
+   "physics_level": 6,
+   "pop": 308,
+   "neurons": 12.0942,
+   "gen_mean": 123.7338,
+   "intake_intact": 0.0339,
+   "intake_ratio_vision": 0.9832,
+   "intake_ratio_memory": 0.5476,
+   "intake_ratio_sound": 0.9664,
+   "neural_k": 6.8125,
+   "neural_mi": 15.0404,
+   "neural_tse": 13.0411,
+   "neural_ais": 6.2689,
+   "neural_phi_wms": -3.662,
+   "neural_whole": 6.2689,
+   "neural_pr": 1.0344,
+   "neural_n": 32,
+   "comm_signal_mi_bits": 0.0233,
+   "comm_signal_mi_null": 0.0011,
+   "comm_signal_mi_null95": 0.0014,
+   "comm_signal_excess_bits": 0.0223,
+   "comm_listen_jsd_swap": 0.001,
+   "comm_listen_jsd_silence": 0.0013,
+   "comm_frac_vocal": 0.9965,
+   "comm_n_samples": 38247
+  },
+  {
+   "run": "B_static",
+   "t": 200000,
+   "physics_level": 0,
+   "pop": 380,
+   "neurons": 8.9842,
+   "gen_mean": 381.8,
+   "intake_intact": 0.0153,
+   "intake_ratio_vision": 1.0042,
+   "intake_ratio_memory": 0.9538,
+   "intake_ratio_sound": 1.0102,
+   "neural_k": 5.1,
+   "neural_mi": 2.6701,
+   "neural_tse": 2.7733,
+   "neural_ais": 2.9932,
+   "neural_phi_wms": -1.4965,
+   "neural_whole": 2.9932,
+   "neural_pr": 1.9089,
+   "neural_n": 30,
+   "comm_signal_mi_bits": 0.0144,
+   "comm_signal_mi_null": 0.0003,
+   "comm_signal_mi_null95": 0.0006,
+   "comm_signal_excess_bits": 0.0141,
+   "comm_listen_jsd_swap": 0.0001,
+   "comm_listen_jsd_silence": 0.0001,
+   "comm_frac_vocal": 0.1936,
+   "comm_n_samples": 44430
+  },
+  {
+   "run": "B_s2",
+   "t": 100000,
+   "physics_level": 0,
+   "pop": 813,
+   "neurons": 7.5252,
+   "gen_mean": 263.0012,
+   "intake_intact": 0.0161,
+   "intake_ratio_vision": 1.0241,
+   "intake_ratio_memory": 1.045,
+   "intake_ratio_sound": 1.0168,
+   "neural_k": 7.375,
+   "neural_mi": 4.0758,
+   "neural_tse": 4.1272,
+   "neural_ais": 2.1015,
+   "neural_phi_wms": -0.4218,
+   "neural_whole": 2.1015,
+   "neural_pr": 1.7661,
+   "neural_n": 32,
+   "comm_signal_mi_bits": 0.0161,
+   "comm_signal_mi_null": 0.0003,
+   "comm_signal_mi_null95": 0.0004,
+   "comm_signal_excess_bits": 0.0158,
+   "comm_listen_jsd_swap": 0.0047,
+   "comm_listen_jsd_silence": 0.011,
+   "comm_frac_vocal": 0.179,
+   "comm_n_samples": 98508
+  },
+  {
+   "run": "B_s3",
+   "t": 100000,
+   "physics_level": 0,
+   "pop": 614,
+   "neurons": 6.1124,
+   "gen_mean": 306.9511,
+   "intake_intact": 0.0179,
+   "intake_ratio_vision": 0.9814,
+   "intake_ratio_memory": 0.6783,
+   "intake_ratio_sound": 0.9641,
+   "neural_k": 5.931,
+   "neural_mi": 10.5612,
+   "neural_tse": 8.7919,
+   "neural_ais": 4.9751,
+   "neural_phi_wms": -3.3443,
+   "neural_whole": 4.9751,
+   "neural_pr": 1.0021,
+   "neural_n": 29,
+   "comm_signal_mi_bits": 0.0063,
+   "comm_signal_mi_null": 0.0003,
+   "comm_signal_mi_null95": 0.0006,
+   "comm_signal_excess_bits": 0.006,
+   "comm_listen_jsd_swap": 0.0006,
+   "comm_listen_jsd_silence": 0.0004,
+   "comm_frac_vocal": 0.6637,
+   "comm_n_samples": 74501
+  },
+  {
+   "run": "C_iff",
+   "t": 200000,
+   "physics_level": 6,
+   "pop": 528,
+   "neurons": 10.4659,
+   "gen_mean": 399.3333,
+   "intake_intact": 0.017,
+   "intake_ratio_vision": 0.9895,
+   "intake_ratio_memory": 0.7318,
+   "intake_ratio_sound": 1.0037,
+   "neural_k": 8.5,
+   "neural_mi": 13.2769,
+   "neural_tse": 15.0505,
+   "neural_ais": 2.7154,
+   "neural_phi_wms": -0.5056,
+   "neural_whole": 2.7154,
+   "neural_pr": 1.2334,
+   "neural_n": 30,
+   "comm_signal_mi_bits": 0.0236,
+   "comm_signal_mi_null": 0.0005,
+   "comm_signal_mi_null95": 0.0008,
+   "comm_signal_excess_bits": 0.0231,
+   "comm_listen_jsd_swap": 0.0,
+   "comm_listen_jsd_silence": 0.0,
+   "comm_frac_vocal": 0.1488,
+   "comm_n_samples": 59473
+  }
+ ],
+ "paired": {
+  "neurons": {
+   "unfold": [
+    11.7659,
+    13.1313,
+    12.0942
+   ],
+   "static": [
+    8.9842,
+    7.5252,
+    6.1124
+   ],
+   "unfold_mean": 12.330466666666666,
+   "static_mean": 7.5406,
+   "pairs_same_direction": 3,
+   "perm_p_two_sided": 0.1
+  },
+  "intake_ratio_memory": {
+   "unfold": [
+    0.3199,
+    0.678,
+    0.5476
+   ],
+   "static": [
+    0.9538,
+    1.045,
+    0.6783
+   ],
+   "unfold_mean": 0.5151666666666667,
+   "static_mean": 0.8923666666666666,
+   "pairs_same_direction": 3,
+   "perm_p_two_sided": 0.1
+  },
+  "intake_ratio_vision": {
+   "unfold": [
+    0.9944,
+    0.9945,
+    0.9832
+   ],
+   "static": [
+    1.0042,
+    1.0241,
+    0.9814
+   ],
+   "unfold_mean": 0.9907,
+   "static_mean": 1.0032333333333332,
+   "pairs_same_direction": 2,
+   "perm_p_two_sided": 0.5
+  },
+  "neural_mi": {
+   "unfold": [
+    16.6215,
+    10.5221,
+    15.0404
+   ],
+   "static": [
+    2.6701,
+    4.0758,
+    10.5612
+   ],
+   "unfold_mean": 14.061333333333332,
+   "static_mean": 5.769033333333333,
+   "pairs_same_direction": 3,
+   "perm_p_two_sided": 0.2
+  },
+  "comm_signal_excess_bits": {
+   "unfold": [
+    0.0444,
+    0.1445,
+    0.0223
+   ],
+   "static": [
+    0.0141,
+    0.0158,
+    0.006
+   ],
+   "unfold_mean": 0.0704,
+   "static_mean": 0.011966666666666667,
+   "pairs_same_direction": 3,
+   "perm_p_two_sided": 0.1
+  },
+  "comm_frac_vocal": {
+   "unfold": [
+    0.8819,
+    0.8864,
+    0.9965
+   ],
+   "static": [
+    0.1936,
+    0.179,
+    0.6637
+   ],
+   "unfold_mean": 0.9216000000000001,
+   "static_mean": 0.3454333333333333,
+   "pairs_same_direction": 3,
+   "perm_p_two_sided": 0.1
+  },
+  "mi_per_neuron": {
+   "unfold": [
+    1.7439042303172738,
+    1.129889932885906,
+    2.207765137614679
+   ],
+   "static": [
+    0.5235490196078432,
+    0.5526508474576272,
+    1.7806777946383407
+   ]
+  }
+ }
+}

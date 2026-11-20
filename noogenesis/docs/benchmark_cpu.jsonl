@@ -1,0 +1,3 @@
+{"side": 64, "capacity": 1024, "mean_pop": 546.8666666666667, "steps_per_s": 118.51385245708634, "agent_steps_per_s": 64811.275447031956, "neurons_eff": 20, "device": "cpu"}
+{"side": 96, "capacity": 2048, "mean_pop": 1092.1666666666667, "steps_per_s": 67.73937122910108, "agent_steps_per_s": 73982.68327738323, "neurons_eff": 19, "device": "cpu"}
+{"side": 128, "capacity": 4096, "mean_pop": 2179.0866666666666, "steps_per_s": 30.327099688522626, "agent_steps_per_s": 66085.37856993047, "neurons_eff": 20, "device": "cpu"}

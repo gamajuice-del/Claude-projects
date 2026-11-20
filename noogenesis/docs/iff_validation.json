@@ -1,0 +1,20 @@
+[
+ {
+  "horizon": 100,
+  "n": 120,
+  "replicate_corr": -0.02408843941269489,
+  "sign_agreement": 0.52,
+  "s_sd": 0.22063732906390596,
+  "frac_pass_both_0p1": 0.025,
+  "frac_pass_one_0p1": 0.10833333333333334
+ },
+ {
+  "horizon": 300,
+  "n": 120,
+  "replicate_corr": 0.023334764162410423,
+  "sign_agreement": 0.3717948717948718,
+  "s_sd": 0.52425127121609,
+  "frac_pass_both_0p1": 0.09166666666666666,
+  "frac_pass_one_0p1": 0.325
+ }
+]
