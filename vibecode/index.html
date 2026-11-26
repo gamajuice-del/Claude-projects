@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VibeCode</title>
+<meta name="description" content="Don't play the game. Prompt it into existence.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!--BODY-->
+<div id="app" class="app">
+  <aside id="sidebar" class="sidebar" aria-label="Chats">
+    <div class="sb-head">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">✻</span><span class="brand-name">Vibe<b>Code</b></span></div>
+      <button id="newChat" class="btn-new" title="New chat (Alt+N)"><span><span class="plus">+</span>New chat</span><kbd>⌥N</kbd></button>
+    </div>
+    <div class="sb-label">Chats</div>
+    <nav id="chatList" class="chat-list"></nav>
+    <div class="sb-foot">
+      <button class="sb-btn" id="btnChallenges"><span class="ico">◇</span>Challenges<span class="cnt" id="chalCount">0/0</span></button>
+      <button class="sb-btn" id="btnAchievements"><span class="ico">✦</span>Achievements<span class="cnt" id="achCount">0/0</span></button>
+      <button class="sb-btn" id="btnSound"><span class="ico" id="soundIco">♪</span><span id="soundLbl">Sound on</span></button>
+    </div>
+  </aside>
+
+  <main id="main" class="main">
+    <section id="hero" class="hero">
+      <div class="hero-in">
+        <div class="hero-mark" aria-hidden="true">✻</div>
+        <h1 class="hero-title">Vibe<i>Code</i></h1>
+        <p class="hero-sub">Don’t play the game. Prompt it into existence.</p>
+        <div class="hero-term" aria-hidden="true"><span class="p">$</span> vibe<br><span class="dim">There is no menu. There is only the prompt.</span></div>
+        <button id="heroNew" class="hero-cta">Start a new chat <kbd>⌥N</kbd></button>
+        <div id="heroResume" class="hero-resume" hidden></div>
+        <div class="hero-note">Your games are saved in this browser.</div>
+      </div>
+    </section>
+
+    <section id="workspace" class="workspace" hidden>
+      <div class="pane-chat" id="paneChat">
+        <header class="term-head">
+          <button class="menu-btn" id="menuBtn" aria-label="Open chats">☰</button>
+          <span class="cwd" id="cwd">~/games/<b>untitled</b></span>
+          <span class="spacer"></span>
+          <div class="seg" id="seg"><button data-v="chat" class="on">Chat</button><button data-v="game">Game</button></div>
+        </header>
+        <div id="transcript" class="transcript" aria-live="polite"></div>
+        <div class="composer" id="composer">
+          <div id="slashMenu" class="slash-menu" hidden></div>
+          <div class="input-box" id="inputBox">
+            <span class="pg">&gt;</span>
+            <div class="input-wrap">
+              <div class="ghost" id="ghost"></div>
+              <textarea id="input" rows="1" spellcheck="false" autocomplete="off" placeholder='Try "a platformer where I’m a cat collecting fish"'></textarea>
+            </div>
+          </div>
+          <div class="status-line">
+            <button class="mode" id="modeLine" title="Shift+Tab to cycle">? for shortcuts</button>
+            <span class="r"><button class="model" id="modelLine" title="/model">vibe-1</button><span id="ctxLine" class="hide-m">ctx 100%</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical"></div>
+      <div class="pane-right" id="paneRight">
+        <div class="tabs" role="tablist">
+          <button class="tab on" data-tab="preview">Preview</button>
+          <button class="tab" data-tab="files">Files <span class="badge" id="filesBadge" hidden></span></button>
+          <button class="tab" data-tab="terminal">Terminal</button>
+          <button class="tab" data-tab="history">History <span class="badge" id="histBadge" hidden></span></button>
+          <span class="spacer"></span>
+          <button class="tool-btn" id="btnRestart" title="Restart round (R)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg></button>
+          <button class="tool-btn" id="btnPause" title="Pause"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="2.6" height="10" rx=".8"/><rect x="9.4" y="3" width="2.6" height="10" rx=".8"/></svg></button>
+          <button class="tool-btn" id="btnFull" title="Fullscreen"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button>
+        </div>
+        <div class="tab-body">
+          <div class="tab-panel preview" id="tab-preview">
+            <div class="stage" id="stage">
+              <canvas id="game" tabindex="0" aria-label="Game preview"></canvas>
+              <div class="badge-top" id="playBadge">AUTOPILOT</div>
+              <div class="hmr" id="hmr">⚡ hot reload</div>
+              <button class="play-cta" id="playCta"><span class="tri"></span>Click to play</button>
+              <div class="paused-veil" id="pausedVeil" hidden><div>Paused<small>click to resume · R restarts</small></div></div>
+              <div class="err-overlay" id="errOverlay" hidden></div>
+            </div>
+            <div class="preview-status" id="pstatus"></div>
+          </div>
+          <div class="tab-panel" id="tab-files" hidden>
+            <div class="files">
+              <div class="tree" id="tree"></div>
+              <div class="editor-wrap">
+                <div class="editor-head"><span class="path" id="edPath">—</span><span class="dirty" id="edDirty" hidden>● unsaved</span><span class="spacer"></span><button id="edRevert" disabled>Revert</button><button id="edSave" class="pri" disabled>Save ⌘S</button></div>
+                <div class="editor" id="editor"><div class="gut" id="gut"></div><pre class="hl" id="hl"></pre><textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea></div>
+                <div class="editor-err" id="edErr" hidden></div>
+              </div>
+            </div>
+          </div>
+          <div class="tab-panel" id="tab-terminal" hidden>
+            <div class="term" id="term"></div>
+            <div class="term-in"><span class="p">$</span><input id="termIn" spellcheck="false" autocomplete="off" aria-label="Terminal input" placeholder="help"></div>
+          </div>
+          <div class="tab-panel" id="tab-history" hidden>
+            <div class="hist" id="hist"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="modal" class="modal" hidden></div>
+<div id="toasts" class="toasts"></div>
+<!--/BODY-->
+<!--SCRIPTS-->
+<script src="js/util.js"></script>
+<script src="js/lexicon.js"></script>
+<script src="js/dsl.js"></script>
+<script src="js/spec.js"></script>
+<script src="js/levels.js"></script>
+<script src="js/render.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/runtime.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/tests.js"></script>
+<script src="js/interpret.js"></script>
+<script src="js/planner.js"></script>
+<script src="js/narrator.js"></script>
+<script src="js/achievements.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/terminal.js"></script>
+<script src="js/agent.js"></script>
+<script src="js/live.js"></script>
+<script src="js/app.js"></script>
+<!--/SCRIPTS-->
+</body>
+</html>
