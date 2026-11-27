@@ -208,6 +208,10 @@ header {
     if (hard < .6) gr.addColorStop(inner + (1 - inner) * .5, `rgba(${r},${g},${b},.35)`);
     gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
     x.fillStyle = gr; x.fillRect(0,0,256,256);
+    // a little grain in the tip, like paper tooth; it also stops faint layers from banding
+    const im = x.getImageData(0,0,256,256), a = im.data;
+    for (let i = 3; i < a.length; i += 4) { if (a[i]) a[i] = Math.min(255, a[i] * (0.78 + Math.random() * 0.44)); }
+    x.putImageData(im, 0, 0);
     if (dabCache.size > 400) dabCache.clear();
     dabCache.set(key, c); return c;
   }
@@ -236,7 +240,7 @@ header {
         fine.push([crPoint(p0[0], p1[0], p2[0], p3[0], t), crPoint(p0[1], p1[1], p2[1], p3[1], t), p1[2] + (p2[2] - p1[2]) * t]);
       }
     }
-    const spacingK = st.t === 's' ? .06 : st.t === 'a' ? .035 : .06;
+    const spacingK = st.t === 's' ? .06 : st.t === 'a' ? .05 : .06;
     const dabs = []; let acc = 0, dist = 0, prev = fine[0];
     const sizeAt = pr => Math.max(.5, st.s * Math.max(.05, pr));
     dabs.push({ x: prev[0], y: prev[1], s: sizeAt(prev[2]), d: 0 });
@@ -258,7 +262,7 @@ header {
   function dab(x, y, s) {
     const st = live.st, X = x * SC, Y = y * SC, D = s * SC;
     if (live.dabImg) {
-      wctx.globalAlpha = st.t === 'a' ? .07 + .2 * st.h : .22 + .78 * st.h;
+      wctx.globalAlpha = st.t === 'a' ? .15 + .2 * st.h : .22 + .78 * st.h;
       wctx.drawImage(live.dabImg, X - D / 2, Y - D / 2, D, D);
     } else if (st.t === 'e') {
       pctx.save(); pctx.globalCompositeOperation = 'destination-out';
@@ -340,7 +344,7 @@ header {
     for (const ev of evs) {
       const [x, y] = toLogical(ev), pr = ev.pointerType === 'pen' ? (ev.pressure || .5) : 1;
       const dx = x - drawing.x, dy = y - drawing.y, len = Math.hypot(dx, dy);
-      const sp = Math.max(.35, live.st.s * pr * (live.st.t === 'a' ? .035 : .06));
+      const sp = Math.max(.35, live.st.s * pr * (live.st.t === 'a' ? .05 : .06));
       let t = sp - drawing.acc;
       while (t <= len) { const k = t / len; dab(drawing.x + dx * k, drawing.y + dy * k, live.st.s * (drawing.pr + (pr - drawing.pr) * k)); t += sp; }
       drawing.acc = len - (t - sp);
@@ -476,5 +480,9 @@ header {
   });
 
   refreshStatus(); refreshCount();
+  // keep watching across a page update: restart the replay if it was running
+  try { window.claude?.hot?.snapshot?.(() => ({ playing })); } catch (e) {}
+  const boot = data => { if (data && data.playing) setTimeout(() => $('startBtn').click(), 400); };
+  try { window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {}); } catch (e) {}
 })();
 </script>
