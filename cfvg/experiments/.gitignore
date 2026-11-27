@@ -1,2 +1,6 @@
 runs/*/ckpt.pt*
 __pycache__/
+# live training/eval logs change constantly while the queue runs;
+# finished logs are copied into results/ when a run completes
+logs/
+runs/*/log.jsonl
