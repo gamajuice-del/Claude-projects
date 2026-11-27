@@ -126,86 +126,136 @@ def fog_field(t):
 
 
 # --- the voided Radiance, looming behind everything ------------------------------
-# She is drawn as a density field: 1 where her void body fully hides the light,
-# fading toward the tattered tips of her wings and the hem of her gown, which
-# dissolve into the void that becomes the shades.
-HEAD = (64.0, 24.0)
-SHOULDER_L, SHOULDER_R = (59.0, 33.5), (69.0, 33.5)
-# (elevation in degrees from horizontal, length, half width) for each feather
-UPPER_WING = [(5, 44, 4.6), (15, 47, 5.2), (25, 45, 5.0), (35, 39, 4.6), (45, 31, 4.0)]
-LOWER_WING = [(-10, 35, 4.4), (-21, 33, 4.4), (-33, 29, 4.0), (-45, 23, 3.4)]
-CROWN = [(-80, 12), (-60, 14), (-40, 16), (-20, 18), (0, 20), (20, 18), (40, 16),
-         (60, 14), (80, 12)]   # spike angle from straight up, length
+# The Radiance as she is in the game: a moth goddess with a round face and two
+# great glowing eyes, three horns rising from her head like a crown, a fluffy
+# ruff at her throat, four broad moth wings spread in an X, thin legs folded
+# under a tapering abdomen, and a huge sun-like disc of light behind her.
+# Voided: her white body is now void, the disc is eclipsed to a dark sun with
+# a burning rim, her wings fray into holes, and her eyes burn void-white.
+HEAD = (64.0, 22.0)
+DISC = (64.0, 30.0, 27.0)            # centre x, y, radius of the halo disc
 HASH = np.modf(np.sin(XX * 12.9898 + YY * 78.233) * 43758.5453)[0] % 1.0
 
+# wings: (anchor, centre, semi-major, semi-minor, eyespot (x, y, r))
+FOREWING = ((59, 31), (39.5, 19.5), 23.0, 9.5, (35, 17, 2.6))
+HINDWING = ((60, 37), (44.0, 47.5), 17.0, 8.6, (40, 50, 1.8))
+# legs: knee and foot for three pairs (left side; mirrored for the right)
+LEGS = [((61, 37), (55, 41), (56, 47)), ((61, 40), (53, 45), (54, 51)),
+        ((62, 43), (56, 50), (58, 55))]
 
-def _feather(ox, oy, ang, length, half):
-    """Lens-shaped feather from (ox, oy) along ang (radians, screen coords).
-    Returns density and the fraction along the feather (0 base .. 1 tip)."""
-    dx, dy = math.cos(ang), math.sin(ang)
-    px, py = XX - ox, YY - oy
-    along = px * dx + py * dy
-    perp = np.abs(-px * dy + py * dx)
-    f = along / length
-    width = half * np.clip(1 - (2 * f - 1) ** 2, 0, 1) ** 0.6
-    inside = (f > 0) & (f < 1) & (perp <= width + 0.35)
-    vein = inside & (perp < 0.55) & (f > 0.25) & (f < 0.92)
-    return inside, np.clip(f, 0, 1), vein
+
+def _wing(anchor, centre, a, b, spot, side, flap):
+    ax, ay = anchor
+    cx, cy = centre
+    if side > 0:
+        ax, cx = 128 - ax, 128 - cx
+    # flap: swing the wing about its anchor
+    ang0 = math.atan2(cy - ay, cx - ax) + flap * side
+    dist = math.hypot(cx - ax, cy - ay)
+    cx, cy = ax + dist * math.cos(ang0), ay + dist * math.sin(ang0)
+    px, py = XX - cx, YY - cy
+    u = (px * math.cos(ang0) + py * math.sin(ang0)) / a
+    v = (-px * math.sin(ang0) + py * math.cos(ang0)) / b
+    r = np.sqrt(u * u + v * v)
+    inside = r <= 1.0
+    keep = HASH > (r - 0.84) * 5.5            # the rim is eaten by holes
+    wing = inside & keep
+    band = wing & (r > 0.70) & (r < 0.79)     # a pale submarginal line
+    # veins fanning out from the anchor
+    va = np.arctan2(YY - ay, XX - ax)
+    veins = wing & (np.abs(np.sin((va - ang0) * 7.0)) < 0.13) & (r > 0.3) & (r < 0.7)
+    sx, sy, sr = spot
+    if side > 0:
+        sx = 128 - sx
+    # move the eyespot with the flap too
+    sa = math.atan2(sy - ay, sx - ax) + flap * side
+    sd = math.hypot(sx - ax, sy - ay)
+    sx, sy = ax + sd * math.cos(sa), ay + sd * math.sin(sa)
+    sdist = np.hypot(XX - sx, YY - sy)
+    ring = wing & (np.abs(sdist - sr) < 0.7)
+    return wing, r, band | veins, ring
+
+
+def _stroke(p0, p1, p2, w0, w1, n=40):
+    """Tapered curved stroke (quadratic bezier) as a boolean mask."""
+    m = np.zeros((H, W), dtype=bool)
+    for k in range(n + 1):
+        u = k / n
+        x = (1 - u) ** 2 * p0[0] + 2 * (1 - u) * u * p1[0] + u * u * p2[0]
+        y = (1 - u) ** 2 * p0[1] + 2 * (1 - u) * u * p1[1] + u * u * p2[1]
+        w = w0 + (w1 - w0) * u
+        m |= (XX - x) ** 2 + (YY - y) ** 2 <= w * w
+    return m
 
 
 def radiance_field(t):
-    """Density D, her own value R, and her feather veins, for time t."""
+    """Density D, her own value R, lighter markings, and her eyespot rings."""
     D = np.zeros((H, W))
-    R = np.full((H, W), 2.0)
-    veins = np.zeros((H, W), dtype=bool)
-    breathe = 2.2 * math.sin(TAU * t)                      # wings rise and fall
-    for (sx, sy), side in ((SHOULDER_L, -1), (SHOULDER_R, 1)):
-        for wing, lift in ((UPPER_WING, 1.0), (LOWER_WING, 0.6)):
-            for k, (elev, length, half) in enumerate(wing):
-                e = math.radians(elev + breathe * lift)
-                ang = math.atan2(-math.sin(e), side * math.cos(e))
-                inside, f, vein = _feather(sx, sy, ang, length, half)
-                # tattered: the outer part of each feather is eaten by holes
-                keep = HASH > (f - 0.62) * 2.2 + 0.03 * k
-                dens = np.where(inside & keep, 1.0 - 0.38 * f ** 2, 0)
-                R = np.where(dens > D, 1.2 + 2.0 * f ** 1.3, R)
-                D = np.maximum(D, dens)
-                veins |= vein & keep
+    R = np.full((H, W), 1.6)
+    marks = np.zeros((H, W), dtype=bool)
+    rings = np.zeros((H, W), dtype=bool)
+    flap = math.radians(3.0) * math.sin(TAU * t)
+    for wing, lift in ((HINDWING, 0.6), (FOREWING, 1.0)):
+        for side in (-1, 1):
+            m, r, mk, rg = _wing(*wing, side, -flap * lift)
+            dens = np.where(m, 1.0 - 0.12 * r ** 4, 0)
+            R = np.where(m, 1.1 + 1.5 * r ** 2, R)
+            D = np.maximum(D, dens)
+            marks |= mk
+            rings |= rg
     hx, hy = HEAD
-    # crown of spikes around the head
-    for a, length in CROWN:
-        ang = math.radians(a - 90)
-        inside, f, _ = _feather(hx + 3 * math.cos(ang), hy + 3 * math.sin(ang),
-                                ang, length, 1.9)
-        D = np.maximum(D, np.where(inside, 1.0, 0))
-    # head, neck and body
-    head = ((XX - hx) / 6.6) ** 2 + ((YY - hy) / 6.2) ** 2 <= 1
-    D = np.maximum(D, head * 1.0)
-    for y0, y1, w0, w1 in ((27, 34, 3.4, 5.2), (34, 45, 5.2, 4.6), (45, 62, 4.6, 7.5)):
-        f = np.clip((YY - y0) / (y1 - y0), 0, 1)
-        half = w0 + (w1 - w0) * f
-        body = (YY >= y0) & (YY < y1) & (np.abs(XX - hx) <= half)
-        if y0 == 45:
-            # the gown frays into strands of void
-            strands = 0.5 + 0.5 * np.sin(XX * 1.9 + 0.7 * np.sin(YY * 0.4 + TAU * t))
-            body &= (HASH * 0.6 + strands * 0.6) > (f * 1.15)
-        D = np.maximum(D, body * (1.0 - 0.35 * f * (y0 == 45)))
-    R = np.where(head | ((YY < 46) & (np.abs(XX - hx) < 5)), 1.6, R)
-    return D, R, veins
+    body = np.zeros((H, W), dtype=bool)
+    # abdomen, tapering, banded like a moth's
+    f = np.clip((YY - 35) / 24.0, 0, 1)
+    abdomen = (YY >= 35) & (YY <= 59) & (np.abs(XX - hx) <= 5.6 - 3.8 * f ** 1.2)
+    body |= abdomen
+    marks |= abdomen & ((YY.astype(int) - 37) % 4 == 0) & (np.abs(XX - hx) < 3.5 - 2 * f)
+    # thin folded legs
+    for (x0, y0), knee, foot in LEGS:
+        for sgn in (-1, 1):
+            if sgn > 0:
+                p0, p1, p2 = (128 - x0, y0), (128 - knee[0], knee[1]), (128 - foot[0], foot[1])
+            else:
+                p0, p1, p2 = (x0, y0), knee, foot
+            body |= _stroke(p0, p1, p2, 0.6, 0.45)
+    # fluffy ruff at the throat: overlapping puffs with a scalloped edge
+    for px, py, pr in ((55, 30, 4.6), (59.5, 31.5, 5.0), (64, 32, 5.2), (68.5, 31.5, 5.0),
+                       (73, 30, 4.6), (58, 35.5, 4.0), (64, 36.5, 4.2), (70, 35.5, 4.0)):
+        puff = (XX - px) ** 2 + (YY - py) ** 2 <= pr * pr
+        body |= puff
+        marks |= puff & (np.abs(np.hypot(XX - px, YY - py) - (pr - 1.4)) < 0.5) & (YY < py)
+    # the round head
+    head = ((XX - hx) / 7.6) ** 2 + ((YY - hy) / 7.2) ** 2 <= 1
+    body |= head
+    # three horns: a tall one in the middle, two curving out at the sides
+    body |= _stroke((64, 16), (64, 9), (64, 1.5), 2.3, 0.4)
+    body |= _stroke((59, 17), (54, 12), (52.5, 5), 1.9, 0.4)
+    body |= _stroke((69, 17), (74, 12), (75.5, 5), 1.9, 0.4)
+    D = np.where(body, 1.0, D)
+    R = np.where(body, 1.2, R)
+    marks &= ~head
+    return D, R, marks, rings
 
 
-def corona(t):
-    """The light she is eclipsing."""
-    d = np.hypot(XX - HEAD[0], (YY - HEAD[1]) * 1.1)
-    return (2.6 + 0.25 * math.sin(TAU * 2 * t)) * np.exp(-(d / 19.0) ** 2)
+def halo(t):
+    """Her great disc of light, eclipsed: a dark sun with a burning rim."""
+    cx, cy, rad = DISC
+    d = np.hypot(XX - cx, YY - cy)
+    flicker = 1 + 0.12 * math.sin(TAU * 2 * t)
+    rim = 5.0 * flicker * np.exp(-((d - rad) / 1.3) ** 2)
+    outer = 2.4 * flicker * np.exp(-np.clip(d - rad, 0, None) / 7.0) * (d > rad)
+    inner = -2.6 * smooth(rad - 2, rad - 9, d)          # the eclipsed face of the disc
+    return rim + outer + inner
 
 
-# her eyes share the droop of her shades' eyes, larger
-RAD_EYES = [(x, y) for x0, y0 in ((60, 23),) for x, y in
-            ((x0, y0), (x0 + 1, y0), (x0 + 2, y0), (x0 - 1, y0 + 1), (x0, y0 + 1),
-             (x0 + 1, y0 + 1), (x0 + 2, y0 + 1), (x0 - 1, y0 + 2), (x0, y0 + 2),
-             (x0 - 1, y0 + 3))]
-RAD_EYES += [(128 - x, y) for x, y in RAD_EYES]
+# her eyes: two great ovals, slightly tilted, burning void-white
+RAD_EYES = []
+for ex, ey, tilt in ((60.0, 22.5, 1), (68.0, 22.5, -1)):
+    for y in range(19, 27):
+        for x in range(55, 74):
+            u = (x - ex) + 0.25 * tilt * (y - ey)
+            if (u / 2.1) ** 2 + ((y - ey) / 3.0) ** 2 <= 1:
+                RAD_EYES.append((x, y))
 HER_REACH = np.array([1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0])   # behind the near city
 
 
@@ -649,14 +699,14 @@ SPARKLES = [(38, 30, 0.0), (91, 22, 0.4), (77, 48, 0.7), (21, 58, 0.2),
             (106, 60, 0.55), (52, 42, 0.85)]
 _rv = random.Random(21)
 DRIPS = []    # void dripping from the Radiance's wings and frayed gown
-for x0, y0 in ((36, 44), (42, 47), (49, 51), (55, 56), (60, 60), (68, 60), (73, 56),
-               (79, 51), (86, 47), (92, 44), (30, 40), (98, 40), (58, 58), (70, 58)):
+for x0, y0 in ((18, 22), (22, 30), (30, 34), (34, 55), (40, 57), (50, 54), (64, 60),
+               (78, 54), (88, 57), (94, 55), (98, 34), (106, 30), (110, 22), (61, 58)):
     DRIPS.append(dict(x=x0 + _rv.uniform(-1.5, 1.5), y=y0, fall=_rv.uniform(8, 16),
                       ph=_rv.random(), sway=_rv.uniform(0.2, 0.8), ph2=_rv.random()))
 # threads of void pouring from her into the shade and the siblings
-THREADS = [((64.0, 60.0), (64.5, 63.0), (64.0, 66.0), 0.0),
-           ((52.0, 52.0), (47.0, 56.0), (47.5, 61.0), 1),
-           ((77.0, 51.0), (86.0, 53.0), (90.5, 57.0), 2)]
+THREADS = [((64.0, 59.0), (64.5, 62.5), (64.0, 66.0), 0.0),
+           ((42.0, 55.0), (45.0, 58.0), (47.5, 61.0), 1),
+           ((86.0, 55.0), (89.0, 56.0), (90.5, 57.5), 2)]
 
 
 def _bezier(p0, p1, p2, u):
@@ -736,30 +786,34 @@ def render(t):
         WORLD = build_world()
     val, layer, gtop = WORLD
     beams = beam_field(t) * BEAM_REACH[layer]
-    # the sky behind her: her eclipsed light, and the beams escaping around her
-    v = val + corona(t) * HER_REACH[layer] + beams
-    D, R, veins = radiance_field(t)
+    # the sky behind her: her eclipsed disc, and the beams escaping around her
+    v = val + halo(t) * HER_REACH[layer] + beams
+    D, R, marks, rings = radiance_field(t)
     D = D * HER_REACH[layer]
-    v = v * (1 - D) + (R + 0.2 * beams) * D
-    v = np.where(veins & (D > 0.3), v + 1.5, v)              # feather veins
-    # her outline catches the light she is hiding
+    v = v * (1 - D) + (R + 0.15 * beams) * D
+    v = np.where(marks & (D > 0.5), v + 1.3, v)              # wing lines, fur, bands
+    v = np.where(rings & (D > 0.5), v + 2.6, v)              # eyespots on the wings
+    # her outline catches the light of the disc behind her
     solid = D > 0.55
     around = (np.roll(solid, 1, 0) & np.roll(solid, -1, 0)
               & np.roll(solid, 1, 1) & np.roll(solid, -1, 1))
-    top_edge = solid & ~np.roll(solid, 1, 0)
-    edge = np.where(YY < 33, solid & ~around, top_edge)   # crown: all round
-    dist = np.hypot(XX - HEAD[0], YY - HEAD[1])
-    glow = 2.6 * np.exp(-(dist / 24.0) ** 2) + 1.4 * np.exp(-(dist / 60.0) ** 2)
+    edge = solid & ~around
+    dist = np.hypot(XX - DISC[0], YY - DISC[1])
+    glow = 3.0 * np.exp(-((dist - DISC[2]) / 6.0) ** 2) + 1.0
     v = np.where(edge, v + glow, v)
     v = v + fog_field(t) * FOG_REACH[layer]
     cv = Canvas(quantize(v))
-    # her eyes, pulsing - the same shape as her shades' eyes
+    # her eyes, pulsing; brightest at the top, like light caught in glass
     pulse = 0.5 + 0.5 * math.sin(TAU * t)
+    top_rows = {}
     for x, y in RAD_EYES:
-        cv.put(x, y, (236, 236, 250) if pulse > 0.45 else (194, 192, 226))
-    if pulse > 0.75:
-        for x, y in ((58, 24), (58, 25), (58, 26), (70, 24), (70, 25), (70, 26)):
-            cv.put(x, y, RAMP[7])
+        top_rows[x] = min(top_rows.get(x, 99), y)
+    for x, y in RAD_EYES:
+        if pulse > 0.45:
+            c = (240, 240, 252) if y <= top_rows[x] + 2 else (206, 204, 234)
+        else:
+            c = (208, 206, 236) if y <= top_rows[x] + 2 else (170, 166, 210)
+        cv.put(x, y, c)
     draw_distant_siblings(cv, t)
     draw_threads(cv, t)
     draw_shade(cv)
