@@ -59,6 +59,7 @@ Snap baseline (never leaves training gravity range) OOD gravity error: 0.045
 | worlds in training | context score (unseen) | context score (OOD) | instr acc (unseen) | copy rate (unseen) |
 |---|---|---|---|---|
 | 30 | 1.001 | 0.976 | 0.585 | 0.214 |
+| 300 | 0.912 | 0.867 | 0.596 | 0.234 |
 | unlimited | 0.926 | 0.896 | 0.574 | 0.214 |
 
 ![pool](pool_scaling.png)
