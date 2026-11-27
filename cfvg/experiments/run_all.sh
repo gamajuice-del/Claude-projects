@@ -18,13 +18,14 @@ run() {  # name, args...
 run cfvg            --mode cfvg
 run cfvg_nocontrast --mode cfvg --contrastive 0     # E5: is the group-contrastive loss needed?
 run paired          --mode paired
+# E1b the main model, trained 3x longer (continues from cfvg's checkpoint)
+if [ ! -d runs/cfvg_long ]; then mkdir -p runs/cfvg_long && cp runs/cfvg/ckpt.pt runs/cfvg/log.jsonl runs/cfvg_long/; fi
+S=12000 run cfvg_long --mode cfvg
 # E2  does the bottleneck matter, once the objective already forbids copying?
 run cfvg_direct     --mode cfvg   --bottleneck 0
 # E3  zero-shot generalisation vs the number of distinct worlds seen in training
 run pool30          --pool 30
 run pool300         --pool 300
-run pool3000        --pool 3000
 # E4  captions that leak the world
 run leaky           --leaky
-run paired_direct   --mode paired --bottleneck 0
 echo ALL_DONE

@@ -1,0 +1,46 @@
+{
+ "id": {
+  "err_color": 0.04650387540459633,
+  "err_size": 0.3570683764705027,
+  "err_gravity": 0.06730125654915671,
+  "err_wind": 0.062238307237421776,
+  "err_ghost": 0.30378968429287645,
+  "err_noise": 0.03701292243675475,
+  "err_shape": 0.671875,
+  "err_hold": 0.6614583333333334,
+  "instr_acc": 0.5833333333333334,
+  "copy_rate": 0.203125,
+  "giant_ratio_on": 2.3663998094396934,
+  "giant_ratio_off": 1.1149542344031496,
+  "gravity_bias": 0.0020235963940721732,
+  "context_score": 0.9174133320971594
+ },
+ "id_conflict": {
+  "shape_follows_reference": 0.3333333333333333,
+  "shape_follows_text": 0.3333333333333333,
+  "gravity_err_vs_reference": 0.06974983153827281,
+  "gravity_err_vs_text": 0.06535428339270127
+ },
+ "ood": {
+  "err_color": 0.04430415853857994,
+  "err_size": 0.3304441821863147,
+  "err_gravity": 0.1406782776827901,
+  "err_wind": 0.05551117054514781,
+  "err_ghost": 0.32941772147577814,
+  "err_noise": 0.037580736125401026,
+  "err_shape": 0.609375,
+  "err_hold": 0.6875,
+  "instr_acc": 0.5885416666666666,
+  "copy_rate": 0.16145833333333334,
+  "giant_ratio_on": 2.3633963999786576,
+  "giant_ratio_off": 1.078787078091652,
+  "gravity_bias": -0.13802021913880957,
+  "context_score": 0.8893011669211602
+ },
+ "ood_conflict": {
+  "shape_follows_reference": 0.3697916666666667,
+  "shape_follows_text": 0.28125,
+  "gravity_err_vs_reference": 0.1409788950945896,
+  "gravity_err_vs_text": 0.06612329615672348
+ }
+}

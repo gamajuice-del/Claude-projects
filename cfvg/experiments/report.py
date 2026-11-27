@@ -46,8 +46,8 @@ def attr_table(runs, split):
 def bars(runs, path):
     runs = [r for r in runs if load(r)]
     fig, axes = plt.subplots(1, 3, figsize=(12, 3.6))
-    for ax, (metric, title) in zip(axes, [("context_score", "Context error (0 = real, 1 = wrong world)"),
-                                          ("instr_acc", "Instruction accuracy"),
+    for ax, (metric, title) in zip(axes, [("context_score", "Context error (1 = wrong world; dotted = real footage)"),
+                                          ("instr_acc", "Instruction accuracy (dotted = real footage)"),
                                           ("copy_rate", "Copy rate")]):
         for j, split in enumerate(("id", "ood")):
             vals = [load(r)[split][metric] for r in runs]

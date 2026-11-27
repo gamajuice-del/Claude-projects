@@ -14,6 +14,7 @@
 | **cfvg_nocontrast** | 0.936 | 0.559 | 0.208 | 2.420 | 1.124 |
 | **paired** | 1.046 | 0.594 | 0.198 | 0.752 | 1.124 |
 | **cfvg_direct** | 0.902 | 0.587 | 0.188 | 2.405 | 1.090 |
+| **leaky** | 0.917 | 0.583 | 0.203 | 2.366 | 1.115 |
 
 Per-attribute error (lower is better):
 
@@ -39,6 +40,7 @@ Per-attribute error (lower is better):
 | **cfvg_nocontrast** | 0.906 | 0.600 | 0.146 | 2.368 | 1.083 |
 | **paired** | 1.007 | 0.595 | 0.177 | 0.720 | 1.088 |
 | **cfvg_direct** | 0.853 | 0.617 | 0.172 | 2.425 | 1.067 |
+| **leaky** | 0.889 | 0.589 | 0.161 | 2.363 | 1.079 |
 
 Per-attribute error (lower is better):
 
@@ -89,3 +91,10 @@ Snap baseline (never leaves training gravity range) OOD gravity error: 0.045
 | 1.0 | 0.791 | 0.710 | 0.109 |
 | 2.0 | 0.777 | 0.809 | 0.036 |
 | 3.5 | 0.775 | 0.850 | 0.052 |
+
+## Leaky captions: reference vs text under conflict
+
+| split | shape follows reference | shape follows text | gravity err vs reference | gravity err vs text |
+|---|---|---|---|---|
+| id | 0.333 | 0.333 | 0.070 | 0.065 |
+| ood | 0.370 | 0.281 | 0.141 | 0.066 |

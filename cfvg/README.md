@@ -244,3 +244,9 @@ The cheapest test of the core claim uses no real-world data:
 3. Measure **physics recovery** and **copy rate** on the held-out contexts.
 
 If held-out gravity and frame rate are recovered from the references, and copy rate stays low, the training objective is teaching context inference rather than memorization. Everything else in this proposal builds on that result.
+
+**Status.** A CPU-scale version of this experiment (16×16 clips, 8 frames, 3M parameters) is in
+[`experiments/`](experiments/README.md). It supports the core claim that training on independent targets
+is necessary: replication training lands at wrong-world fidelity and ignores overrides. It does not yet pass the
+physics-recovery test, because generated objects are not sharp enough for their behaviour to be read,
+and it does not extrapolate gravity beyond the training range.
