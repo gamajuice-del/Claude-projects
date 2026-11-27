@@ -96,8 +96,9 @@ def main():
     n = int(END * FPS)
     ff = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo',
                            '-pix_fmt', 'rgb24', '-s', '%dx%d' % (W, H), '-r', str(FPS), '-i', '-',
-                           '-i', 'shade_finale.mp3', '-c:v', 'libx264', '-preset', 'slow',
-                           '-crf', '17', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k',
+                           '-i', 'shade_finale.mp3', '-vf', 'hqdn3d=2:2:5:5', '-c:v', 'libx264',
+                           '-preset', 'slow', '-b:v', '4600k', '-maxrate', '6000k',
+                           '-bufsize', '12000k', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k',
                            '-shortest', '-movflags', '+faststart', out], stdin=subprocess.PIPE)
     with mp.Pool(4) as pool:
         for k, data in enumerate(pool.imap(frame, range(n), chunksize=6)):
