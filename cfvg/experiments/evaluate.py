@@ -25,7 +25,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from engine import (CONTENT_RANGES, GIANT, Content, content_bins, bin_centers, make_text,
+from engine import (CONTENT_RANGES, GIANT, G_TRAIN_MAX, Content, content_bins, bin_centers, make_text,
                     render, sample_content, sample_contexts)
 from model import CFVG, sample
 from probe import Probe
@@ -160,7 +160,7 @@ def main():
         videos = {"real": case["real"], "wrong": case["wrong"], "copy": case["refs"][:, 0]}
         res = {name: summarise(*read_metrics(probe, v, case), case, floor) for name, v in videos.items()}
         # "snap" baseline: a model that never leaves the training range of gravity
-        snap = np.clip(case["ctx"].gravity, 0, 0.35)
+        snap = np.clip(case["ctx"].gravity, 0, G_TRAIN_MAX)
         res["snap_gravity_err"] = float(np.abs(snap - case["ctx"].gravity).mean())
         json.dump(res, open(f"results/baselines_{split}.json", "w"), indent=1)
         print(split, json.dumps(res, default=lambda x: round(x, 3)))

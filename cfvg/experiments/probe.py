@@ -14,14 +14,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from engine import (CONTENT_RANGES, GIANT, render, sample_content, sample_contexts)
+from engine import (CONTENT_RANGES, G_RANGE, GIANT, SIZE_RANGE, WIND, render, sample_content,
+                    sample_contexts)
 
 # continuous targets: bg(3) fg(3) size gravity wind ghost noise | x0 y0 vx vy
 CTX_NAMES = ["bg_r", "bg_g", "bg_b", "fg_r", "fg_g", "fg_b",
              "size", "gravity", "wind", "ghost", "noise"]
 CON_NAMES = list(CONTENT_RANGES)
-LO = np.array([0] * 6 + [1.8, 0.0, -0.12, 0.0, 0.0] + [r[0] for r in CONTENT_RANGES.values()], np.float32)
-HI = np.array([1] * 6 + [4.2 * GIANT, 0.5, 0.12, 0.75, 0.12] + [r[1] for r in CONTENT_RANGES.values()], np.float32)
+LO = np.array([0] * 6 + [SIZE_RANGE[0], 0.0, -WIND, 0.0, 0.0] + [r[0] for r in CONTENT_RANGES.values()], np.float32)
+HI = np.array([1] * 6 + [SIZE_RANGE[1] * GIANT, G_RANGE[1], WIND, 0.75, 0.12] + [r[1] for r in CONTENT_RANGES.values()], np.float32)
 
 
 def targets(ctx, c, giant):
@@ -36,9 +37,9 @@ class Probe(nn.Module):
         super().__init__()
         def blk(i, o, s):
             return nn.Sequential(nn.Conv3d(i, o, 3, s, 1), nn.GroupNorm(8, o), nn.GELU())
-        self.net = nn.Sequential(blk(3, 32, 1), blk(32, 64, (1, 2, 2)), blk(64, 96, (1, 2, 2)),
-                                 blk(96, 128, (2, 2, 2)), blk(128, 128, (2, 1, 1)))
-        self.head = nn.Sequential(nn.Flatten(), nn.Linear(128 * 3 * 4 * 4, 512), nn.GELU(),
+        self.net = nn.Sequential(blk(3, 32, 1), blk(32, 64, (1, 2, 2)), blk(64, 96, (2, 2, 2)),
+                                 blk(96, 128, (2, 1, 1)), blk(128, 128, 1))
+        self.head = nn.Sequential(nn.Flatten(), nn.Linear(128 * 2 * 4 * 4, 512), nn.GELU(),
                                   nn.Linear(512, 15 + 3 + 3))
 
     def forward(self, x):                      # x: (B, T, 3, H, W)

@@ -1,6 +1,6 @@
 """Small CFVG model: a context encoder plus a flow-matching video transformer.
 
-Video (T=12, 3, 32, 32) -> patches of 3 frames x 4 x 4 px -> 4 x 8 x 8 = 256 tokens.
+Video (T=8, 3, 16, 16) -> patches of 2 frames x 2 x 2 px -> 4 x 8 x 8 = 256 tokens.
 
 Context pathway options:
   bottleneck=N  : K reference clips -> encoder -> Perceiver resampler -> N tokens
@@ -16,7 +16,7 @@ import torch.nn.functional as F
 
 from engine import H, W, T, VOCAB, NULL_TOKEN
 
-PT, PS = 3, 4                       # temporal / spatial patch
+PT, PS = 2, 2                       # temporal / spatial patch
 NT, NH, NW = T // PT, H // PS, W // PS
 N_TOK = NT * NH * NW
 PATCH_DIM = 3 * PT * PS * PS
@@ -144,6 +144,9 @@ class CFVG(nn.Module):
         self.out = nn.Linear(d, PATCH_DIM)
         nn.init.zeros_(self.out.weight)
         nn.init.zeros_(self.out.bias)
+        # identity path from the noisy input, gated by time: lets the network keep
+        # per-pixel detail (sensor noise) cheaply
+        self.skip = nn.Linear(d, 1)
         self.d = d
 
     def t_embed(self, t):
@@ -163,11 +166,18 @@ class CFVG(nn.Module):
         masks = {"ctx": ctx_mask} if ctx_mask is not None else None
         for blk in self.blocks:
             h = blk(h, c, conds, masks)
-        return unpatchify(self.out(self.out_norm(h)))
+        gate = torch.sigmoid(self.skip(c)).view(-1, 1, 1, 1, 1)
+        return gate * x_t + unpatchify(self.out(self.out_norm(h)))   # predicted clean video
+
+
+def velocity(x_hat, x_t, t):
+    """x-prediction -> rectified-flow velocity."""
+    return (x_hat - x_t) / (1 - t).clamp(min=0.05).view(-1, 1, 1, 1, 1)
 
 
 def flow_loss(model, refs, ref_mask, target, text, p_drop_text=0.1):
-    """Rectified flow: x_t = t * x + (1 - t) * eps, predict v = x - eps."""
+    """Rectified flow: x_t = t * x + (1 - t) * eps. The network predicts the clean
+    video x; the loss is on the implied velocity v = x - eps."""
     B = target.shape[0]
     t = torch.sigmoid(torch.randn(B))                 # logit-normal timesteps
     eps = torch.randn_like(target)
@@ -176,8 +186,8 @@ def flow_loss(model, refs, ref_mask, target, text, p_drop_text=0.1):
     drop = torch.rand(B) < p_drop_text
     text = torch.where(drop[:, None], torch.full_like(text, NULL_TOKEN), text)
     ctx, ctx_mask = model.encode(refs, ref_mask)
-    v = model(x_t, t, ctx, ctx_mask, text)
-    return F.mse_loss(v, target - eps)
+    v = velocity(model(x_t, t, ctx, ctx_mask, text), x_t, t)
+    return F.mse_loss(v.float(), target - eps)
 
 
 @torch.no_grad()
@@ -191,9 +201,9 @@ def sample(model, refs, ref_mask, text, steps=24, text_scale=1.0, seed=0):
     ts = torch.linspace(0, 1, steps + 1)
     for i in range(steps):
         t = torch.full((B,), ts[i].item())
-        v = model(x, t, ctx, ctx_mask, text)
+        v = velocity(model(x, t, ctx, ctx_mask, text), x, t)
         if text_scale != 1.0:
-            v0 = model(x, t, ctx, ctx_mask, null)
+            v0 = velocity(model(x, t, ctx, ctx_mask, null), x, t)
             v = v0 + text_scale * (v - v0)
         x = x + (ts[i + 1] - ts[i]) * v
     return x.clamp(-1, 1)

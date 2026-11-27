@@ -20,8 +20,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-H = W = 32          # frame size
-T = 12              # frames per clip
+H = W = 16          # frame size
+T = 8               # frames per clip
 SHAPES = 3          # square, circle, diamond
 HOLDS = 3           # animation on 1s, 2s, 3s
 GIANT = 2.2         # size multiplier of the "gigantic" override
@@ -29,9 +29,11 @@ GIANT = 2.2         # size multiplier of the "gigantic" override
 # Never seen in training: the zero-shot (out-of-distribution) test worlds have
 # stronger gravity than any training world (extrapolation) AND an object colour
 # hue band that no training world uses.
-G_RANGE = (0.0, 0.5)
-G_TRAIN_MAX = 0.35
-G_OOD = (0.38, 0.5)
+G_RANGE = (0.0, 0.25)
+G_TRAIN_MAX = 0.175
+G_OOD = (0.19, 0.25)
+SIZE_RANGE = (1.0, 2.2)
+WIND = 0.08
 HUE_OOD = (0.55, 0.70)
 
 # ---- text vocabulary: an event caption, as tokens -------------------------
@@ -45,10 +47,10 @@ VOCAB = int(sum(TEXT_BINS)) + 1          # +1 for the "dropped" token
 NULL_TOKEN = VOCAB - 1
 
 CONTENT_RANGES = {
-    "x0": (6.0, 26.0),
-    "y0": (4.0, 18.0),
-    "vx": (-2.0, 2.0),
-    "vy": (-2.5, 0.5),
+    "x0": (3.0, 13.0),
+    "y0": (2.0, 9.0),
+    "vx": (-1.0, 1.0),
+    "vy": (-1.25, 0.25),
 }
 
 
@@ -124,9 +126,9 @@ def sample_contexts(rng, n, split="train") -> Context:
     return Context(
         bg=bg, fg=fg,
         shape=rng.integers(0, SHAPES, n),
-        size=rng.uniform(1.8, 4.2, n),
+        size=rng.uniform(*SIZE_RANGE, n),
         gravity=g,
-        wind=rng.uniform(-0.12, 0.12, n),
+        wind=rng.uniform(-WIND, WIND, n),
         hold=rng.integers(1, HOLDS + 1, n),
         ghost=np.where(rng.random(n) < 0.5, 0.0, rng.uniform(0.3, 0.75, n)),
         noise=np.where(rng.random(n) < 0.4, 0.0, rng.uniform(0.02, 0.12, n)),
