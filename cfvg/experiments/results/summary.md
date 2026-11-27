@@ -54,6 +54,15 @@ Per-attribute error (lower is better):
 
 Snap baseline (never leaves training gravity range) OOD gravity error: 0.045
 
+## World diversity vs zero-shot generalisation
+
+| worlds in training | context score (unseen) | context score (OOD) | instr acc (unseen) | copy rate (unseen) |
+|---|---|---|---|---|
+| 30 | 1.001 | 0.976 | 0.585 | 0.214 |
+| unlimited | 0.926 | 0.896 | 0.574 | 0.214 |
+
+![pool](pool_scaling.png)
+
 ## Training length (main model)
 
 | steps | context score (unseen) | context score (OOD) | instr acc | copy rate | shape err | hold err | ghost err |
