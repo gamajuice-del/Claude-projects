@@ -329,39 +329,46 @@ SIB_TINY = [
     ".KK.",
 ]
 
-# The Knight.  Origin (56, 82).
+# The Knight, seen from behind, looking up at the shade.  Origin (56, 84).
+# Follows the artist's block-in pixel for pixel: horns leaning in at the tips,
+# the pale back of the mask (no face - it is turned away from us), the cloak
+# swept out to the right, the left arm raised with the nail, and the stance.
 KNIGHT = [
-    "....m........m...",   # 82
-    "....Wm......Wm...",   # 83
-    "....Ww......Ww...",   # 84
-    "....WW......Ww...",   # 85
-    "....WWW....WWw...",   # 86
-    "....WWWWWWWWWw...",   # 87
-    "....WWKKWWKKWw...",   # 88
-    "....WKKKWWKKKw...",   # 89
-    "....WKKKWwKKKw...",   # 90
-    "....wWKKWwKKwm...",   # 91
-    ".....wWWwwwwm....",   # 92
-    "....CCccmmmcco...",   # 93
-    "...CCcccccccooo..",   # 94
-    "..hCCccccccccoo..",   # 95
-    "..CCcccccccccooo.",   # 96
-    "..CcccccccccccoO.",   # 97
-    "..Cc.ccc.cccc.o..",   # 98
-    "..C...cK..Kc...o.",   # 99
-    "......KK..KK.....",   # 100
-    "......KK..KK.....",   # 101
-    ".....KKK..KKK....",   # 102
+    ".....Ww....Ww....",   # 84  horn tips
+    "....Ww......Wm...",   # 85
+    "....Ww......Wm...",   # 86
+    "....Ww......Wm...",   # 87
+    ".....WWWWWwwm....",   # 88  back of the mask, lit from above
+    ".....Wwwwwwwm....",   # 89
+    "......Wwwwwm.....",   # 90
+    "......wwwmmd.....",   # 91
+    "...CCcmmmddd.....",   # 92  collar
+    ".....CCcccccooo..",   # 93
+    "...CCCcccccoo....",   # 94
+    "..KKCCcccccooo...",   # 95  hand on the hilt
+    ".KCCCccccccoooo..",   # 96
+    "....CcoKKKK.oo...",   # 97  hem, legs showing
+    "......lKKKK...o..",   # 98
+    "......lKKKKK.....",   # 99
+    "......lKKKKK.....",   # 100
+    "......lK..KKK....",   # 101
+    "......lK...KK....",   # 102
+    "............K....",   # 103
 ]
 KNIGHT_KEY = dict(KEY)
-KNIGHT_KEY['O'] = CLOAK_LO
+KNIGHT_KEY['l'] = (30, 30, 38)        # the far leg, in shadow
+# The light is in front of the Knight, so the back of the mask sits in shadow
+# with bright rims; the cloak is the artist's deep purple.
+KNIGHT_KEY.update({'W': (206, 200, 228), 'w': (150, 142, 178), 'm': (120, 110, 150),
+                   'd': (92, 82, 124), 'C': (72, 60, 112), 'c': (36, 25, 64),
+                   'o': (22, 15, 40)})
 
 
 def draw_shade(cv):
     ox, oy = 53, 60
     # body: a ragged cloak of void pouring down into the Knight
     cv.blob(64.5, 80, 6.2, 4.5)
-    cv.blob(64.5, 84, 4.2, 3.0)
+    cv.blob(64.5, 83.5, 3.0, 3.0)   # fills the gap between the Knight's horns
     # shoulders sweep out into two long tendrils, like a cape lifting
     cv.wisp([(59, 78), (55, 81), (51, 80), (47, 77), (46, 74), (48, 72)], 2.0, 0.4, broken=0.15)
     cv.wisp([(70, 78), (74, 81), (79, 81), (83, 78), (84, 75), (82, 73)], 2.0, 0.4, broken=0.15)
@@ -402,23 +409,14 @@ def draw_distant_siblings(cv):
 
 
 def draw_knight(cv):
-    cv.sprite(56, 82, KNIGHT, KNIGHT_KEY)
-    # nail raised up-left from the hand at (58, 95)
-    x0, y0, x1, y1 = 57, 94, 47, 87
-    n = max(abs(x1 - x0), abs(y1 - y0))
-    for k in range(n + 1):
-        x = round(x0 + (x1 - x0) * k / n)
-        y = round(y0 + (y1 - y0) * k / n)
-        if k <= 1:
-            cv.put(x, y, HANDLE)
-        elif k == 2:
-            cv.put(x, y, NAIL_LO)          # guard
-            cv.put(x - 1, y + 1, NAIL_LO)
-            cv.put(x + 1, y - 1, NAIL_LO)
-        else:
-            cv.put(x, y, NAIL_HI if k < n else NAIL)
-            cv.put(x, y + 1, NAIL if k < n - 1 else NAIL_LO)
-    cv.put(x1 - 1, y1 - 1, NAIL_HI)        # the tip catching the light
+    cv.sprite(56, 84, KNIGHT, KNIGHT_KEY)
+    # the nail, raised up-left from the hand: lit lower edge, darker upper edge
+    for x, y, c in ((52, 91, NAIL_HI),
+                    (53, 92, NAIL_HI), (54, 92, NAIL),
+                    (54, 93, NAIL_HI), (55, 93, NAIL),
+                    (55, 94, NAIL_HI), (56, 94, NAIL_LO),
+                    (56, 95, NAIL_LO), (57, 95, HANDLE)):
+        cv.put(x, y, c)
 
 
 def draw_ground_detail(cv, gtop):
