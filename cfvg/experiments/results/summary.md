@@ -13,6 +13,7 @@
 | **cfvg_long** | 0.791 | 0.710 | 0.109 | 2.369 | 1.075 |
 | **cfvg_nocontrast** | 0.936 | 0.559 | 0.208 | 2.420 | 1.124 |
 | **paired** | 1.046 | 0.594 | 0.198 | 0.752 | 1.124 |
+| **cfvg_direct** | 0.902 | 0.587 | 0.188 | 2.405 | 1.090 |
 
 Per-attribute error (lower is better):
 
@@ -24,6 +25,7 @@ Per-attribute error (lower is better):
 | cfvg_long | 0.035 | 0.231 | 0.074 | 0.054 | 0.271 | 0.012 | 0.635 | 0.693 | +0.013 |
 | cfvg_nocontrast | 0.046 | 0.419 | 0.071 | 0.061 | 0.321 | 0.037 | 0.641 | 0.656 | +0.002 |
 | paired | 0.051 | 0.878 | 0.071 | 0.068 | 0.281 | 0.036 | 0.651 | 0.677 | -0.014 |
+| cfvg_direct | 0.043 | 0.301 | 0.072 | 0.059 | 0.298 | 0.036 | 0.661 | 0.682 | +0.013 |
 
 ## Unseen region: stronger gravity than any training world + unseen colour band
 
@@ -36,6 +38,7 @@ Per-attribute error (lower is better):
 | **cfvg_long** | 0.755 | 0.702 | 0.057 | 2.473 | 1.056 |
 | **cfvg_nocontrast** | 0.906 | 0.600 | 0.146 | 2.368 | 1.083 |
 | **paired** | 1.007 | 0.595 | 0.177 | 0.720 | 1.088 |
+| **cfvg_direct** | 0.853 | 0.617 | 0.172 | 2.425 | 1.067 |
 
 Per-attribute error (lower is better):
 
@@ -47,6 +50,7 @@ Per-attribute error (lower is better):
 | cfvg_long | 0.033 | 0.253 | 0.126 | 0.053 | 0.277 | 0.012 | 0.635 | 0.703 | -0.124 |
 | cfvg_nocontrast | 0.044 | 0.376 | 0.132 | 0.058 | 0.327 | 0.037 | 0.641 | 0.708 | -0.129 |
 | paired | 0.048 | 0.727 | 0.145 | 0.060 | 0.320 | 0.037 | 0.615 | 0.682 | -0.139 |
+| cfvg_direct | 0.041 | 0.293 | 0.128 | 0.054 | 0.300 | 0.037 | 0.667 | 0.661 | -0.125 |
 
 Snap baseline (never leaves training gravity range) OOD gravity error: 0.045
 
