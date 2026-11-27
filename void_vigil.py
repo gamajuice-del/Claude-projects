@@ -2,9 +2,9 @@
 """
 void_vigil.py - finishes a 128x128 pixel-art Hollow Knight fan piece.
 
-The composition follows the artist's own block-in: the Knight on a dark mound
-with the nail raised, a tall horned shade of void rising out of it, and two
-siblings drifting in purple light that falls from above.
+The composition follows the artist's own block-in: the Knight, seen from behind
+on a dark mound with the nail raised, a horned shade of void rising out of it,
+and two siblings drifting in purple light that falls from above.
 
 Everything is drawn on a fixed palette.  The background is painted as a value
 on a purple ramp and ordered-dithered onto it; figures are placed pixel by
@@ -30,10 +30,8 @@ RAMP = [  # dark -> light, the whole background lives on this ramp
 ]
 VOID = (6, 5, 10)
 VOID_HI = (26, 20, 40)        # sheen on the void
-AURA1 = (34, 20, 60)          # violet edge around void
-AURA2 = (50, 32, 88)
 EYE = (236, 236, 248)
-EYE_DIM = (150, 146, 184)
+EYE_DIM = (188, 186, 210)
 MASK = (238, 236, 246)
 MASK2 = (204, 200, 226)
 MASK3 = (156, 150, 186)
@@ -182,7 +180,7 @@ class Canvas:
     def __init__(self, img):
         self.img = img
         self.void = np.zeros((H, W), dtype=bool)   # pixels that are void matter
-        self.overlay = []                           # eyes etc, laid over the aura
+        self.overlay = []                           # eyes and loose specks, laid on top
 
     def put(self, x, y, c):
         x, y = int(x), int(y)
@@ -201,7 +199,9 @@ class Canvas:
                 if ch in ('.', ' '):
                     continue
                 c = key[ch]
-                if c == VOID or c == VOID_HI:
+                if c == 'speck':
+                    self.overlay.append((x0 + i, y0 + j, VOID))
+                elif c == VOID or c == VOID_HI:
                     self.putv(x0 + i, y0 + j, c)
                 elif c in (EYE, EYE_DIM):
                     self.putv(x0 + i, y0 + j)           # part of the void body
@@ -209,118 +209,75 @@ class Canvas:
                 else:
                     self.put(x0 + i, y0 + j, c)
 
-    def wisp(self, pts, r0, r1, steps=None, broken=0.0):
-        """Tapered void tendril along a Catmull-Rom curve through pts."""
-        P = [pts[0]] + list(pts) + [pts[-1]]
-        samples = []
-        for k in range(1, len(P) - 2):
-            p0, p1, p2, p3 = P[k - 1], P[k], P[k + 1], P[k + 2]
-            for s in range(12):
-                t = s / 12
-                t2, t3 = t * t, t * t * t
-                x = 0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t +
-                           (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
-                           (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3)
-                y = 0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t +
-                           (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
-                           (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)
-                samples.append((x, y))
-        samples.append(pts[-1])
-        n = len(samples)
-        for k, (x, y) in enumerate(samples):
-            f = k / max(n - 1, 1)
-            r = r0 + (r1 - r0) * f
-            if f > 1 - broken and rnd.random() < 0.45:
-                continue
-            if r < 0.75:
-                self.putv(x, y)
-            else:
-                ri = int(math.ceil(r))
-                for dy in range(-ri, ri + 1):
-                    for dx in range(-ri, ri + 1):
-                        if dx * dx + dy * dy <= r * r:
-                            self.putv(x + dx, y + dy)
-
-    def blob(self, cx, cy, rx, ry):
-        for y in range(int(cy - ry - 1), int(cy + ry + 2)):
-            for x in range(int(cx - rx - 1), int(cx + rx + 2)):
-                if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0:
-                    self.putv(x, y)
-
-    def aura(self, protect):
-        """Violet edge around all void matter (not over protected pixels)."""
-        v = self.void
-        ring1 = np.zeros_like(v)
-        ring2 = np.zeros_like(v)
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                ring1 |= np.roll(np.roll(v, dy, 0), dx, 1)
-        for dy in range(-2, 3):
-            for dx in range(-2, 3):
-                if abs(dx) + abs(dy) <= 3:
-                    ring2 |= np.roll(np.roll(v, dy, 0), dx, 1)
-        ring2 &= ~ring1
-        ring1 &= ~v
-        for y in range(H):
-            for x in range(W):
-                if protect[y, x]:
-                    continue
-                if ring1[y, x]:
-                    self.img[y, x] = AURA1 if y < 102 else RAMP[1]
-                elif ring2[y, x] and (x + y) % 2 == 0 and y < 100:
-                    self.img[y, x] = AURA2
-
 
 # --- the figures -----------------------------------------------------------------
 KEY = {'K': VOID, 'k': VOID_HI, 'E': EYE, 'e': EYE_DIM,
        'W': MASK, 'w': MASK2, 'm': MASK3, 'd': MASK4,
        'C': CLOAK_HI, 'c': CLOAK, 'o': CLOAK_LO,
-       'N': NAIL_HI, 'n': NAIL, 'q': NAIL_LO, 'h': HANDLE}
+       'N': NAIL_HI, 'n': NAIL, 'q': NAIL_LO, 'h': HANDLE,
+       'x': 'speck'}
 
-# The great shade rising out of the Knight.  Origin (56, 60).
+# The shade rising out of the Knight, as the artist blocked it in: horns curving
+# in like a crescent, two small eyes set close, and a narrow body running
+# straight down between the Knight's horns.  Origin (56, 65).
+# K void, k sheen on the void, E eye, x a loose speck of void.
 SHADE = [
-    ".......K........K......",   # 60  horn tips lean in
-    "......KK........KK.....",   # 61
-    ".....KKk.........KK....",   # 62
-    ".....Kk...........KK...",   # 63
-    "....KKk...........KK...",   # 64
-    "....KKk...........KK...",   # 65
-    "....KKk...........KK...",   # 66
-    "....KKKk.........KKK...",   # 67
-    ".....KKKk.......KKK....",   # 68
-    ".....KKKKKkkkkKKKKK....",   # 69
-    "....KKKKkkKKKKKKKKKK...",   # 70
-    "....KKKKKKKKKKKKKKKK...",   # 71
-    "....KKEEEKKKKKKEEEKK...",   # 72
-    "....KKEEKKKKKKKKEEKK...",   # 73
-    "....KKEKKKKKKKKKKEKK...",   # 74
-    ".....KKKKKKKKKKKKKK....",   # 75
-    ".....KKKKKKKKKKKKKK....",   # 76
-    "......KKKKKKKKKKKK.....",   # 77
+    ".....K.....K.....",   # 65
+    "....K.......K....",   # 66
+    "...KK...x...KK...",   # 67
+    "...KK.......KK...",   # 68
+    "...KKK.....KKK...",   # 69
+    "...KKKKKKKKKKK...",   # 70
+    "....KkkKKKKKK....",   # 71
+    ".....KEEKEEK.....",   # 72
+    ".....KEKKKEK.....",   # 73
+    ".....KKKKKKK.....",   # 74
+    "......KKKKK...xx.",   # 75
+    "......KKKKK....x.",   # 76
+    "..x...KKKKK......",   # 77
+    ".....KKKKKKK.x...",   # 78
+    ".....KKKKKKK.....",   # 79
+    ".....KKKKKKK.....",   # 80
+    ".....KKKKKKK..x..",   # 81
+    ".....KKKKKKK.....",   # 82
+    ".....KKKKKKK.....",   # 83
+    ".......KKKK......",   # 84  between the Knight's horns
+    "......KK.KKK.....",   # 85
+    "......K....K.....",   # 86
 ]
 
-# Abyss sibling, larger (left) and small (right).
-SIB_L = [
-    ".K......K.",
-    ".KK....KK.",
-    "..KK..KK..",
-    ".KKKKKKKK.",
-    "KKKKKKKKKK",
-    "KEEKKKKEEK",
-    "KEEKKKKEEK",
-    "KKEKKKKEKK",
-    ".KKKKKKKK.",
-    "..KKKKKK..",
+# The two siblings, also from the block-in.  The left one is tilted, leaning
+# away with its legs trailing; the right one floats upright.  'e' = dim eye.
+SIB_L = [                  # origin (38, 63)
+    ".........KKK......",
+    "......K...KK..x...",
+    ".....KK.KKKKK.....",
+    ".....KKKKKeeK.....",
+    "......KeKKKeK.....",
+    ".......KeKKKK.....",
+    "........KKKKKK.x..",
+    "..........KKKK....",
+    "..x.......KKKKK...",
+    "...........KKKKK..",
+    "........x..KKKKK..",
+    "..........KKK.K.K.",
+    "..........KKK.K...",
+    ".........K..K.....",
+    "..................",
+    "..................",
+    "............x.....",
 ]
-SIB_R = [
-    "K......K",
-    "KK....KK",
-    ".KKKKKK.",
-    "KKKKKKKK",
-    "KEEKKEEK",
-    "KKEKKEKK",
-    ".KKKKKK.",
-    "..KKKK..",
+SIB_R = [                  # origin (85, 59)
+    "...KK..KK...",
+    "..K.KKKK.K..",
+    "....eKeK....",
+    "....KKKK....",
+    "....KKK..x..",
+    "....KKK.....",
+    "..x.KKKK....",
+    "....KKKK....",
+    "....KKKK....",
+    "....K.K.K...",
 ]
 SIB_TINY = [
     "K..K",
@@ -365,36 +322,16 @@ KNIGHT_KEY.update({'W': (206, 200, 228), 'w': (150, 142, 178), 'm': (120, 110, 1
 
 
 def draw_shade(cv):
-    ox, oy = 53, 60
-    # body: a ragged cloak of void pouring down into the Knight
-    cv.blob(64.5, 80, 6.2, 4.5)
-    cv.blob(64.5, 83.5, 3.0, 3.0)   # fills the gap between the Knight's horns
-    # shoulders sweep out into two long tendrils, like a cape lifting
-    cv.wisp([(59, 78), (55, 81), (51, 80), (47, 77), (46, 74), (48, 72)], 2.0, 0.4, broken=0.15)
-    cv.wisp([(70, 78), (74, 81), (79, 81), (83, 78), (84, 75), (82, 73)], 2.0, 0.4, broken=0.15)
-    # lower ragged hem strands
-    cv.wisp([(60, 82), (57, 86), (54, 87), (52, 86)], 1.4, 0.3, broken=0.3)
-    cv.wisp([(69, 82), (72, 86), (75, 88), (77, 87)], 1.4, 0.3, broken=0.3)
-    cv.wisp([(62, 83), (60, 88), (58, 90)], 0.9, 0.3, broken=0.4)
-    cv.wisp([(67, 83), (69, 88), (71, 91)], 0.9, 0.3, broken=0.4)
-    # head and horns over the body
-    cv.sprite(ox, oy, SHADE, KEY)
+    cv.sprite(56, 65, SHADE, KEY)
 
 
 def draw_siblings(cv):
-    # left sibling reaching toward the Knight, trailing its body behind
-    cv.wisp([(46, 72), (42, 75), (39, 79), (40, 83), (37, 86)], 2.4, 0.3, broken=0.35)
-    cv.wisp([(44, 73), (40, 74), (36, 73), (33, 75)], 1.0, 0.3, broken=0.4)
-    cv.wisp([(49, 73), (51, 76), (53, 76)], 0.9, 0.3, broken=0.2)   # little arm
-    cv.sprite(43, 63, SIB_L, KEY)
-    # right sibling, smaller, curling its tail
-    cv.wisp([(90, 67), (91, 71), (94, 74), (97, 73), (98, 70)], 1.8, 0.3, broken=0.3)
-    cv.wisp([(88, 67), (86, 70), (85, 73)], 0.8, 0.3, broken=0.3)
-    cv.sprite(86, 59, SIB_R, KEY)
+    cv.sprite(38, 63, SIB_L, KEY)
+    cv.sprite(85, 59, SIB_R, KEY)
 
 
 def draw_distant_siblings(cv):
-    """Faint siblings lost in the haze, for depth.  Not void-masked (no aura)."""
+    """Faint siblings lost in the haze, for depth."""
     far = (30, 24, 50)
     for x0, y0, tail in ((20, 44, 1), (104, 38, -1), (30, 24, 1), (112, 82, -1), (8, 70, 1)):
         for j, row in enumerate(SIB_TINY):
@@ -420,6 +357,7 @@ def draw_knight(cv):
 
 
 def draw_ground_detail(cv, gtop):
+    rnd = random.Random(12)        # own seed: editing figures won't move it
     # grass and thorn tufts along the mound's lit edge
     for x in range(2, W - 2):
         g = gtop[x]
@@ -446,6 +384,7 @@ def draw_ground_detail(cv, gtop):
 
 def draw_foreground(cv):
     """Near-black grass framing the bottom corners."""
+    rnd = random.Random(13)        # own seed: editing figures won't move it
     dark = RAMP[0]
     blades = []
     for side in (-1, 1):
@@ -469,6 +408,7 @@ def draw_foreground(cv):
 
 
 def draw_particles(cv, gtop):
+    rnd = random.Random(11)        # own seed: editing figures won't move it
     # falling light motes
     for _ in range(46):
         x = rnd.randrange(W)
@@ -484,16 +424,6 @@ def draw_particles(cv, gtop):
             cv.put(x + dx, y + dy, RAMP[11])
 
 
-def draw_specks(cv):
-    """Void specks drifting up off the shade and siblings (after the aura)."""
-    for cx, cy, spread, n in ((64.5, 60, 11, 16), (47, 62, 6, 6), (90, 57, 5, 5)):
-        for _ in range(n):
-            x = int(round(cx + rnd.gauss(0, spread * 0.7)))
-            y = int(round(cy - abs(rnd.gauss(0, spread))))
-            if 0 <= x < W and 0 <= y < H and not cv.void[y, x]:
-                cv.put(x, y, VOID if rnd.random() < 0.6 else AURA1)
-
-
 def main(out):
     val, gtop = build_background()
     img = quantize(val)
@@ -502,12 +432,8 @@ def main(out):
     draw_shade(cv)
     draw_siblings(cv)
     draw_particles(cv, gtop)
-    # violet aura goes around the void before the Knight is laid on top
-    protect = np.zeros((H, W), dtype=bool)
-    cv.aura(protect)
     for x, y, c in cv.overlay:
         cv.put(x, y, c)
-    draw_specks(cv)
     draw_knight(cv)
     draw_ground_detail(cv, gtop)
     draw_foreground(cv)
