@@ -131,6 +131,7 @@ header {
       <span id="statusText">Press Start and Claude picks up the brush.</span>
       <span class="count" id="count">0 strokes</span>
     </div>
+    <button class="btn" id="skipBtn" type="button" hidden>Skip to end</button>
     <button class="btn primary" id="startBtn" type="button">Start</button>
   </header>
 
@@ -331,7 +332,7 @@ header {
   let drawing = null;
   function toLogical(e) { const r = wet.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H]; }
   wet.addEventListener('pointerdown', e => {
-    if (playing) return;
+    if (claudeBusy()) return;
     wet.setPointerCapture(e.pointerId); pushUndo();
     const st = norm({ t: ui.tool, c: ui.color, s: ui.size, o: ui.opacity, h: ui.hardness, p: [] });
     beginStroke(st);
@@ -356,6 +357,9 @@ header {
 
   // ---------- Claude's hand: playback of hand-placed strokes ----------
   const pen = $('pen'), penRing = $('penRing');
+  let skip = false;
+  // Claude has the brush only while strokes are queued, or while it is still painting new rounds
+  function claudeBusy() { return playing && (!!cur || queue.length > 0 || !(control && control.state === 'done')); }
   let playing = false, queue = [], cur = null, lastEnq = -Infinity, played = 0, total = 0, lastT = 0, liftUntil = 0;
   let batches = [], control = null, currentLabel = '';
   function enqueueNew() {
@@ -375,11 +379,11 @@ header {
   function tick(now) {
     const dt = Math.min(.05, (now - (lastT || now)) / 1000); lastT = now;
     if (playing) {
-      let budget = 900 * speedFactor() * dt; // logical px of travel this frame
+      let budget = skip ? 1e12 : 900 * speedFactor() * dt; // logical px of travel this frame
       let guard = 0;
-      while (budget > 0 && guard++ < 50) {
+      while (budget > 0 && guard++ < (skip ? 1e6 : 50) && !(skip && performance.now() - now > 30)) {
         if (!cur) {
-          if (now < liftUntil) break;
+          if (!skip && now < liftUntil) break;
           const item = queue.shift();
           if (!item) break;
           if (item.label != null && !item.st) { currentLabel = item.label; refreshStatus(); continue; }
@@ -399,7 +403,7 @@ header {
           liftUntil = now + 70 / speedFactor(); break;
         }
       }
-      if (!cur && !queue.length) refreshStatus();
+      if (!cur && !queue.length) { skip = false; refreshStatus(); }
     }
     requestAnimationFrame(tick);
   }
@@ -411,6 +415,7 @@ header {
   function refreshCount() { $('count').textContent = (playing ? played + ' / ' : '') + total + ' strokes'; }
   function refreshStatus() {
     const st = control && control.state;
+    $('skipBtn').hidden = !(playing && (cur || queue.length));
     if (!playing) {
       if (st === 'done' && total) setStatus('Claude finished the eye. Press Start to watch it painted again.', 'ok');
       else if (total) setStatus('Claude is painting. Press Start to watch from the first stroke.', 'live');
@@ -462,13 +467,15 @@ header {
   $('startBtn').addEventListener('click', () => {
     endStroke(); drawing = null;
     pctx.clearRect(0, 0, paint.width, paint.height); undo.length = 0;
-    queue = []; cur = null; lastEnq = -Infinity; played = 0; currentLabel = '';
+    queue = []; cur = null; lastEnq = -Infinity; played = 0; currentLabel = ''; skip = false;
     playing = true; lockRail(true); enqueueNew(); refreshCount();
     $('startBtn').textContent = 'Restart';
     const st = control && control.state;
     if (!total && st !== 'requested' && st !== 'drawing') callClaude();
     refreshStatus();
   });
+
+  $('skipBtn').addEventListener('click', () => { if (playing && (cur || queue.length)) skip = true; });
 
   // ---------- save ----------
   $('saveBtn').addEventListener('click', async () => {
