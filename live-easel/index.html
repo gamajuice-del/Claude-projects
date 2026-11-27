@@ -1,0 +1,480 @@
+<title>Live Easel</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a studio bench. Tool rail on the left, the easel (one 3:2 sheet) in the middle, a status strip on top. */
+:root {
+  --bg: #e9e6e1;
+  --bench: #f3f1ed;
+  --ink: #23211f;
+  --muted: #6c6862;
+  --line: #d3cec6;
+  --accent: #2f55c4;
+  --accent-ink: #ffffff;
+  --live: #c2410c;
+  --paper: #f8f6f1;
+  --shadow: 0 1px 2px rgba(40,30,20,.08), 0 12px 32px rgba(40,30,20,.12);
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1c1f; --bench: #24262a; --ink: #ecebe8; --muted: #a29f99; --line: #383a3f;
+    --accent: #7d9bff; --accent-ink: #10131c; --live: #fb923c;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 16px 40px rgba(0,0,0,.45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1c1f; --bench: #24262a; --ink: #ecebe8; --muted: #a29f99; --line: #383a3f;
+  --accent: #7d9bff; --accent-ink: #10131c; --live: #fb923c;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 16px 40px rgba(0,0,0,.45);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 24px;
+}
+.app { max-width: 1440px; margin: 0 auto; display: grid; gap: 14px; }
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+}
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { font-family: var(--f-display); font-weight: 700; font-size: 26px; margin: 0; letter-spacing: -.01em; }
+.brand span { color: var(--muted); font-size: 13px; }
+.status {
+  flex: 1 1 320px; min-width: 0; display: flex; align-items: center; gap: 10px;
+  background: var(--bench); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px;
+}
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.live { background: var(--live); animation: pulse 1.4s ease-in-out infinite; }
+.dot.ok { background: var(--accent); }
+@keyframes pulse { 50% { opacity: .35; } }
+#statusText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count { margin-left: auto; font-family: var(--f-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.btn {
+  font: 600 14px var(--f-body); border: 1px solid var(--line); background: var(--bench); color: var(--ink);
+  border-radius: 8px; padding: 8px 14px; cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible, .tool:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); padding: 9px 22px; font-size: 15px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+.bench { display: grid; grid-template-columns: 228px minmax(0, 1fr); gap: 14px; align-items: start; }
+.rail {
+  background: var(--bench); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+  display: grid; gap: 16px;
+}
+.rail h2 { font: 500 11px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.tools { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.tool {
+  font: 500 13px var(--f-body); color: var(--ink); background: transparent; border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 6px; cursor: pointer; display: flex; align-items: center; gap: 7px; justify-content: center;
+}
+.tool svg { width: 16px; height: 16px; flex: none; }
+.tool[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.colorrow { display: flex; gap: 10px; align-items: center; }
+#color { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: var(--paper); cursor: pointer; }
+#colorHex { font: 500 13px var(--f-mono); color: var(--muted); }
+.swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-top: 8px; }
+.swatches button { aspect-ratio: 1; border: 1px solid rgba(0,0,0,.18); border-radius: 4px; cursor: pointer; padding: 0; }
+.slider { display: grid; gap: 4px; }
+.slider label { display: flex; justify-content: space-between; font-size: 13px; }
+.slider output { font: 500 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.slider input { width: 100%; accent-color: var(--accent); }
+.actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.actions .btn { padding: 7px 4px; font-size: 13px; }
+.rail.locked .tool, .rail.locked input, .rail.locked .swatches button, .rail.locked .actions .btn { pointer-events: none; }
+.lockNote { font-size: 12px; color: var(--live); margin: 0; }
+
+.stagewrap { min-width: 0; display: grid; gap: 10px; }
+.stage {
+  position: relative; width: 100%; max-width: 100%; aspect-ratio: 3 / 2; background: var(--paper);
+  border-radius: 4px; box-shadow: var(--shadow); overflow: hidden; touch-action: none;
+}
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#wet { cursor: crosshair; }
+.pen {
+  position: absolute; left: 0; top: 0; pointer-events: none; transform: translate(-50%, -50%);
+  transition: opacity .25s;
+}
+.pen .ring { border: 1.5px solid rgba(20,20,20,.75); box-shadow: 0 0 0 1px rgba(255,255,255,.7); border-radius: 50%; }
+.pen .tag {
+  position: absolute; left: 50%; top: 50%; margin: 10px 0 0 10px; white-space: nowrap;
+  font: 600 11px var(--f-mono); background: #23211f; color: #f8f6f1; padding: 2px 6px; border-radius: 4px;
+}
+.pen.up .ring { border-style: dashed; }
+.notes { display: flex; flex-wrap: wrap; gap: 8px 24px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.notes p { margin: 0; max-width: 68ch; }
+.notes strong { color: var(--ink); font-weight: 600; }
+#msg { color: var(--live); }
+
+@media (max-width: 820px) {
+  .bench { grid-template-columns: minmax(0, 1fr); }
+  .stagewrap { order: -1; }
+  .rail { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { .dot.live { animation: none; } }
+</style>
+
+<div class="app">
+  <header>
+    <div class="brand"><h1>Live Easel</h1><span>one sheet, one brush, painted in front of you</span></div>
+    <div class="status" role="status" aria-live="polite">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">Press Start and Claude picks up the brush.</span>
+      <span class="count" id="count">0 strokes</span>
+    </div>
+    <button class="btn primary" id="startBtn" type="button">Start</button>
+  </header>
+
+  <div class="bench">
+    <aside class="rail" id="rail" aria-label="Brush tools">
+      <div>
+        <h2>Tool</h2>
+        <div class="tools" id="tools">
+          <button class="tool" type="button" id="tool-b" data-tool="b" aria-pressed="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.5 2.5l3 3-7 7H3.5v-3z"/></svg>Brush</button>
+          <button class="tool" type="button" id="tool-a" data-tool="a" aria-pressed="false"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2.2"/><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-dasharray="1.5 2"/></svg>Airbrush</button>
+          <button class="tool" type="button" id="tool-s" data-tool="s" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 13.5V6.5a1.2 1.2 0 012.4 0V9m0-1.2a1.2 1.2 0 012.4 0V9.5m0-.8a1.2 1.2 0 012.4.2v2.6A3.5 3.5 0 019.7 15H8.6A3.4 3.4 0 016 13.5zM6 9.5L4.2 8a1.1 1.1 0 00-1.6 1.5L6 13.5"/></svg>Smudge</button>
+          <button class="tool" type="button" id="tool-e" data-tool="e" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3l4 4-6 6H4l-1.5-1.5z M6.5 5.5l4 4 M4 13h9"/></svg>Eraser</button>
+        </div>
+      </div>
+      <div>
+        <h2>Colour</h2>
+        <div class="colorrow"><input type="color" id="color" value="#5a3a2a" aria-label="Brush colour"><span id="colorHex">#5a3a2a</span></div>
+        <div class="swatches" id="swatches"></div>
+      </div>
+      <div style="display:grid;gap:12px">
+        <div class="slider"><label for="size">Size <output id="sizeOut">24</output></label><input type="range" id="size" min="1" max="260" value="24"></div>
+        <div class="slider"><label for="opacity">Opacity <output id="opacityOut">80%</output></label><input type="range" id="opacity" min="1" max="100" value="80"></div>
+        <div class="slider"><label for="hardness">Hardness <output id="hardnessOut">70%</output></label><input type="range" id="hardness" min="0" max="100" value="70"></div>
+      </div>
+      <div>
+        <h2>Sheet</h2>
+        <div class="actions">
+          <button class="btn" type="button" id="undoBtn">Undo</button>
+          <button class="btn" type="button" id="clearBtn">Clear</button>
+          <button class="btn" type="button" id="saveBtn">Save</button>
+        </div>
+      </div>
+      <p class="lockNote" id="lockNote" hidden>Claude has the brush. The controls show what it is using.</p>
+    </aside>
+
+    <section class="stagewrap">
+      <div class="stage" id="stage" data-comment-target>
+        <canvas id="paint" width="2400" height="1600" aria-label="Painting surface"></canvas>
+        <canvas id="wet" width="2400" height="1600"></canvas>
+        <div class="pen" id="pen" hidden><div class="ring" id="penRing"></div><span class="tag">Claude</span></div>
+      </div>
+      <div class="notes">
+        <p><strong>How Claude paints here.</strong> Each stroke is a path Claude places by hand: a list of points with pen pressure, plus the brush it picked. The easel drags the brush through those points at hand speed. There are no shape, fill or gradient commands, only the same four tools you have.</p>
+        <p id="msg" hidden></p>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const W = 1200, H = 800, SC = 2;
+  const $ = id => document.getElementById(id);
+  const paint = $('paint'), wet = $('wet'), stage = $('stage');
+  const pctx = paint.getContext('2d'), wctx = wet.getContext('2d');
+  const smudgeCv = document.createElement('canvas'), sctx = smudgeCv.getContext('2d');
+  smudgeCv.width = smudgeCv.height = 640;
+  const maskCv = document.createElement('canvas'); maskCv.width = maskCv.height = 256;
+  { const m = maskCv.getContext('2d'); const g = m.createRadialGradient(128,128,0,128,128,128);
+    g.addColorStop(0,'rgba(0,0,0,1)'); g.addColorStop(.55,'rgba(0,0,0,.75)'); g.addColorStop(1,'rgba(0,0,0,0)');
+    m.fillStyle = g; m.fillRect(0,0,256,256); }
+
+  // ---------- brush engine ----------
+  const dabCache = new Map();
+  function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  function dabFor(color, hard) {
+    const key = color + '|' + hard.toFixed(2);
+    if (dabCache.has(key)) return dabCache.get(key);
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d'); const [r,g,b] = hexRgb(color);
+    const gr = x.createRadialGradient(128,128,0,128,128,128);
+    const inner = Math.min(.97, Math.max(0, hard * .97));
+    gr.addColorStop(0, `rgba(${r},${g},${b},1)`);
+    gr.addColorStop(inner, `rgba(${r},${g},${b},1)`);
+    if (hard < .6) gr.addColorStop(inner + (1 - inner) * .5, `rgba(${r},${g},${b},.35)`);
+    gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    x.fillStyle = gr; x.fillRect(0,0,256,256);
+    if (dabCache.size > 400) dabCache.clear();
+    dabCache.set(key, c); return c;
+  }
+
+  // Stroke: {t:'b'|'a'|'s'|'e', c:'#hex', s:size, o:opacity 0..1, h:hardness 0..1, p:[[x,y,pressure?],...]}
+  function norm(st) {
+    const t = st.t || 'b';
+    return { t, c: st.c || '#000000', s: Math.max(0.5, +st.s || 10), o: Math.min(1, Math.max(0.01, st.o ?? 1)),
+      h: Math.min(1, Math.max(0, st.h ?? (t === 'a' ? 0 : .7))), p: (st.p || []).map(q => [+q[0], +q[1], q[2] == null ? 1 : +q[2]]) };
+  }
+  function crPoint(a, b, c, d, t) {
+    const t2 = t * t, t3 = t2 * t;
+    return 0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+  }
+  // Densify the hand-placed points along a Catmull-Rom curve, then lay dabs at brush spacing.
+  function planDabs(st) {
+    const P = st.p; if (!P.length) return [];
+    const fine = [];
+    if (P.length === 1) fine.push(P[0]);
+    for (let i = 0; i < P.length - 1; i++) {
+      const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(P.length - 1, i + 2)];
+      const len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+      const n = Math.max(1, Math.ceil(len / 0.75));
+      for (let k = (i === 0 ? 0 : 1); k <= n; k++) {
+        const t = k / n;
+        fine.push([crPoint(p0[0], p1[0], p2[0], p3[0], t), crPoint(p0[1], p1[1], p2[1], p3[1], t), p1[2] + (p2[2] - p1[2]) * t]);
+      }
+    }
+    const spacingK = st.t === 's' ? .06 : st.t === 'a' ? .035 : .06;
+    const dabs = []; let acc = 0, dist = 0, prev = fine[0];
+    const sizeAt = pr => Math.max(.5, st.s * Math.max(.05, pr));
+    dabs.push({ x: prev[0], y: prev[1], s: sizeAt(prev[2]), d: 0 });
+    for (let i = 1; i < fine.length; i++) {
+      const q = fine[i], seg = Math.hypot(q[0] - prev[0], q[1] - prev[1]);
+      dist += seg; acc += seg;
+      const sp = Math.max(.35, sizeAt(q[2]) * spacingK);
+      if (acc >= sp) { dabs.push({ x: q[0], y: q[1], s: sizeAt(q[2]), d: dist }); acc = 0; }
+      prev = q;
+    }
+    return dabs;
+  }
+
+  let live = null; // stroke being laid down: {st, dabImg, last}
+  function beginStroke(st) {
+    live = { st, dabImg: (st.t === 'b' || st.t === 'a') ? dabFor(st.c, st.h) : null, last: null };
+    if (live.dabImg) { wctx.clearRect(0, 0, wet.width, wet.height); wet.style.opacity = st.o; }
+  }
+  function dab(x, y, s) {
+    const st = live.st, X = x * SC, Y = y * SC, D = s * SC;
+    if (live.dabImg) {
+      wctx.globalAlpha = st.t === 'a' ? .07 + .2 * st.h : .22 + .78 * st.h;
+      wctx.drawImage(live.dabImg, X - D / 2, Y - D / 2, D, D);
+    } else if (st.t === 'e') {
+      pctx.save(); pctx.globalCompositeOperation = 'destination-out';
+      pctx.globalAlpha = st.o * (.25 + .5 * st.h);
+      pctx.drawImage(dabFor('#000000', st.h), X - D / 2, Y - D / 2, D, D); pctx.restore();
+    } else if (st.t === 's') {
+      const L = live.last;
+      if (L) {
+        const sz = Math.min(640, Math.ceil(D)), r = sz / 2;
+        sctx.globalCompositeOperation = 'copy';
+        sctx.drawImage(paint, L.X - r, L.Y - r, sz, sz, 0, 0, sz, sz);
+        sctx.globalCompositeOperation = 'destination-in';
+        sctx.drawImage(maskCv, 0, 0, sz, sz);
+        pctx.save(); pctx.globalAlpha = st.o;
+        pctx.drawImage(smudgeCv, 0, 0, sz, sz, X - r, Y - r, sz, sz); pctx.restore();
+      }
+    }
+    live.last = { X, Y };
+  }
+  function endStroke() {
+    if (!live) return;
+    if (live.dabImg) {
+      pctx.save(); pctx.globalAlpha = live.st.o; pctx.drawImage(wet, 0, 0); pctx.restore();
+      wctx.clearRect(0, 0, wet.width, wet.height); wet.style.opacity = 1;
+    }
+    live = null;
+  }
+
+  // ---------- controls ----------
+  const swatchColors = ['#1a1412','#3b2418','#6b4430','#a8705a','#d9a48c','#f1d3c2','#ffffff','#f4efe9',
+                        '#2c3e2a','#556b3a','#8a9a4b','#c7a44a','#7a3b1f','#b3402e','#2b3f66','#7f95b8'];
+  const sw = $('swatches');
+  swatchColors.forEach(c => { const b = document.createElement('button'); b.type = 'button'; b.style.background = c; b.setAttribute('aria-label', 'Colour ' + c);
+    b.addEventListener('click', () => { setColor(c); }); sw.appendChild(b); });
+  const ui = { tool: 'b', color: '#5a3a2a', size: 24, opacity: .8, hardness: .7 };
+  function setTool(t) { ui.tool = t; document.querySelectorAll('.tool').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === t))); }
+  function setColor(c) { ui.color = c; $('color').value = c; $('colorHex').textContent = c; }
+  function setSlider(id, v, fmt) { $(id).value = v; $(id + 'Out').textContent = fmt(v); }
+  const pct = v => Math.round(v) + '%';
+  document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+  $('color').addEventListener('input', e => setColor(e.target.value));
+  $('size').addEventListener('input', e => { ui.size = +e.target.value; $('sizeOut').textContent = e.target.value; });
+  $('opacity').addEventListener('input', e => { ui.opacity = e.target.value / 100; $('opacityOut').textContent = pct(e.target.value); });
+  $('hardness').addEventListener('input', e => { ui.hardness = e.target.value / 100; $('hardnessOut').textContent = pct(e.target.value); });
+  function showStrokeInUI(st) {
+    setTool(st.t); setColor(st.c);
+    setSlider('size', Math.round(st.s), v => String(v));
+    setSlider('opacity', Math.round(st.o * 100), pct);
+    setSlider('hardness', Math.round(st.h * 100), pct);
+  }
+
+  // undo (your own strokes)
+  const undo = [];
+  function pushUndo() {
+    const c = document.createElement('canvas'); c.width = paint.width; c.height = paint.height;
+    c.getContext('2d').drawImage(paint, 0, 0); undo.push(c); if (undo.length > 12) undo.shift();
+  }
+  $('undoBtn').addEventListener('click', () => { const c = undo.pop(); if (!c) return; pctx.clearRect(0, 0, paint.width, paint.height); pctx.drawImage(c, 0, 0); });
+  let clearArmed = 0;
+  $('clearBtn').addEventListener('click', e => {
+    if (Date.now() - clearArmed > 2500) { clearArmed = Date.now(); e.target.textContent = 'Sure?'; setTimeout(() => e.target.textContent = 'Clear', 2500); return; }
+    pushUndo(); pctx.clearRect(0, 0, paint.width, paint.height); e.target.textContent = 'Clear'; clearArmed = 0;
+  });
+
+  // ---------- your own hand ----------
+  let drawing = null;
+  function toLogical(e) { const r = wet.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H]; }
+  wet.addEventListener('pointerdown', e => {
+    if (playing) return;
+    wet.setPointerCapture(e.pointerId); pushUndo();
+    const st = norm({ t: ui.tool, c: ui.color, s: ui.size, o: ui.opacity, h: ui.hardness, p: [] });
+    beginStroke(st);
+    const [x, y] = toLogical(e), pr = e.pointerType === 'pen' ? (e.pressure || .5) : 1;
+    drawing = { x, y, pr, acc: 0 }; dab(x, y, st.s * pr);
+  });
+  wet.addEventListener('pointermove', e => {
+    if (!drawing || !live) return;
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of evs) {
+      const [x, y] = toLogical(ev), pr = ev.pointerType === 'pen' ? (ev.pressure || .5) : 1;
+      const dx = x - drawing.x, dy = y - drawing.y, len = Math.hypot(dx, dy);
+      const sp = Math.max(.35, live.st.s * pr * (live.st.t === 'a' ? .035 : .06));
+      let t = sp - drawing.acc;
+      while (t <= len) { const k = t / len; dab(drawing.x + dx * k, drawing.y + dy * k, live.st.s * (drawing.pr + (pr - drawing.pr) * k)); t += sp; }
+      drawing.acc = len - (t - sp);
+      drawing.x = x; drawing.y = y; drawing.pr = pr;
+    }
+  });
+  const stopUser = () => { if (drawing) { drawing = null; endStroke(); } };
+  wet.addEventListener('pointerup', stopUser); wet.addEventListener('pointercancel', stopUser);
+
+  // ---------- Claude's hand: playback of hand-placed strokes ----------
+  const pen = $('pen'), penRing = $('penRing');
+  let playing = false, queue = [], cur = null, lastEnq = -Infinity, played = 0, total = 0, lastT = 0, liftUntil = 0;
+  let batches = [], control = null, currentLabel = '';
+  function enqueueNew() {
+    for (const b of batches) {
+      if (b.seq <= lastEnq) continue;
+      queue.push({ label: b.label || '' });
+      for (const s of (b.strokes || [])) queue.push({ st: s });
+      lastEnq = b.seq;
+    }
+  }
+  function placePen(x, y, s, up) {
+    pen.hidden = false; pen.classList.toggle('up', !!up);
+    pen.style.left = (x / W * 100) + '%'; pen.style.top = (y / H * 100) + '%';
+    const px = Math.max(6, s / W * stage.clientWidth); penRing.style.width = penRing.style.height = px + 'px';
+  }
+  function speedFactor() { const n = queue.length; return n > 400 ? 10 : n > 150 ? 5 : n > 60 ? 2.5 : n > 25 ? 1.6 : 1; }
+  function tick(now) {
+    const dt = Math.min(.05, (now - (lastT || now)) / 1000); lastT = now;
+    if (playing) {
+      let budget = 900 * speedFactor() * dt; // logical px of travel this frame
+      let guard = 0;
+      while (budget > 0 && guard++ < 50) {
+        if (!cur) {
+          if (now < liftUntil) break;
+          const item = queue.shift();
+          if (!item) break;
+          if (item.label != null && !item.st) { currentLabel = item.label; refreshStatus(); continue; }
+          const st = norm(item.st); const dabs = planDabs(st);
+          if (!dabs.length) continue;
+          showStrokeInUI(st); beginStroke(st);
+          cur = { st, dabs, i: 0, travel: 0 };
+        }
+        const end = cur.dabs[cur.dabs.length - 1].d;
+        const take = Math.min(budget, end - cur.travel + .001);
+        cur.travel += take; budget -= take;
+        while (cur.i < cur.dabs.length && cur.dabs[cur.i].d <= cur.travel) { const d = cur.dabs[cur.i++]; dab(d.x, d.y, d.s); }
+        const at = cur.dabs[Math.min(cur.i, cur.dabs.length) - 1] || cur.dabs[0];
+        placePen(at.x, at.y, at.s, false);
+        if (cur.i >= cur.dabs.length) {
+          endStroke(); placePen(at.x, at.y, at.s, true); cur = null; played++; refreshCount();
+          liftUntil = now + 70 / speedFactor(); break;
+        }
+      }
+      if (!cur && !queue.length) refreshStatus();
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // ---------- status ----------
+  const dot = $('dot'), statusText = $('statusText');
+  function setStatus(text, kind) { statusText.textContent = text; dot.className = 'dot' + (kind ? ' ' + kind : ''); }
+  function refreshCount() { $('count').textContent = (playing ? played + ' / ' : '') + total + ' strokes'; }
+  function refreshStatus() {
+    const st = control && control.state;
+    if (!playing) {
+      if (st === 'done' && total) setStatus('Claude finished the eye. Press Start to watch it painted again.', 'ok');
+      else if (total) setStatus('Claude is painting. Press Start to watch from the first stroke.', 'live');
+      else setStatus('Press Start and Claude picks up the brush.', '');
+      return;
+    }
+    if (cur || queue.length) { setStatus('Painting: ' + (currentLabel || 'laying in'), 'live'); return; }
+    if (st === 'done') { setStatus('Finished. ' + total + ' strokes, every one placed by hand.', 'ok'); lockRail(false); pen.hidden = true; return; }
+    if (!total) { setStatus(st === 'drawing' ? 'Claude is choosing the first strokes…' : 'Claude has been called. Waiting for the first stroke…', 'live'); return; }
+    setStatus('Claude is looking at the sheet and choosing the next strokes…' + (control && control.note ? ' (' + control.note + ')' : ''), 'live');
+  }
+  function lockRail(on) { $('rail').classList.toggle('locked', on); $('lockNote').hidden = !on; }
+  function showMsg(t) { const m = $('msg'); m.textContent = t; m.hidden = !t; }
+
+  // ---------- server link (artifact database + comments to Claude) ----------
+  let db = null, comments = null;
+  const loadTimer = setTimeout(() => { if (!db) showMsg('The easel server has not answered yet. Painting by hand still works.'); }, 10000);
+  (async () => {
+    if (!window.claude || !window.claude.use) { clearTimeout(loadTimer); showMsg('Open this page on claude.ai to watch Claude paint. You can still paint here yourself.'); return; }
+    [db, comments] = await Promise.all([claude.use('db'), claude.use('comments')]);
+    clearTimeout(loadTimer);
+    if (!db) { showMsg('Sign in on claude.ai to connect the easel to Claude. You can still paint here yourself.'); return; }
+    showMsg('');
+    db.collection('batches').orderBy('seq').onSnapshot(snap => {
+      batches = snap.docs.map(d => d.data()).filter(b => typeof b.seq === 'number');
+      total = batches.reduce((n, b) => n + ((b.strokes && b.strokes.length) || 0), 0);
+      if (playing) enqueueNew();
+      refreshCount(); refreshStatus();
+    }, e => showMsg('Lost the link to the easel server (' + (e && e.code) + '). Reload to reconnect.'));
+    db.doc('control/run').onSnapshot(s => { control = s.exists ? s.data() : null; refreshStatus(); }, () => {});
+  })();
+
+  async function callClaude() {
+    let sent = false;
+    if (comments) {
+      try {
+        const can = await comments.canSendToClaude();
+        if (can === 'available') {
+          const anchor = await comments.anchorFor(stage);
+          await comments.sendToClaude({ anchor, text: 'Start: paint the hyperrealistic human eye on the easel now, stroke by stroke.' });
+          sent = true;
+        }
+      } catch (e) { /* fall through to the chat hint */ }
+    }
+    if (db) { try { await db.doc('control/run').set({ state: 'requested', at: Date.now(), note: '' }); } catch (e) {} }
+    showMsg(sent ? '' : 'The page could not reach Claude directly. Type "start" in your chat with Claude and the strokes will appear here.');
+  }
+
+  $('startBtn').addEventListener('click', () => {
+    endStroke(); drawing = null;
+    pctx.clearRect(0, 0, paint.width, paint.height); undo.length = 0;
+    queue = []; cur = null; lastEnq = -Infinity; played = 0; currentLabel = '';
+    playing = true; lockRail(true); enqueueNew(); refreshCount();
+    $('startBtn').textContent = 'Restart';
+    const st = control && control.state;
+    if (!total && st !== 'requested' && st !== 'drawing') callClaude();
+    refreshStatus();
+  });
+
+  // ---------- save ----------
+  $('saveBtn').addEventListener('click', async () => {
+    const out = document.createElement('canvas'); out.width = paint.width; out.height = paint.height;
+    const o = out.getContext('2d'); o.fillStyle = '#f8f6f1'; o.fillRect(0, 0, out.width, out.height); o.drawImage(paint, 0, 0);
+    const blob = await new Promise(r => out.toBlob(r, 'image/png'));
+    try { const dl = window.claude && await claude.use('downloads'); if (!dl) throw 0; await dl.save({ filename: 'live-easel.png', data: blob }); }
+    catch (e) { showMsg('Saving is not available in this view.'); }
+  });
+
+  refreshStatus(); refreshCount();
+})();
+</script>
