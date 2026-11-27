@@ -2,15 +2,19 @@
 """
 void_vigil.py - finishes a 128x128 pixel-art Hollow Knight fan piece.
 
-The composition follows the artist's own block-in: the Knight, seen from behind
-on a dark mound with the nail raised, a horned shade of void rising out of it,
-and two siblings drifting in purple light that falls from above.
+The composition and the figures are the artist's own block-in: the Knight, seen
+from behind on a dark mound with the nail raised, a horned shade of void rising
+out of it, and two siblings drifting in purple light that falls from above.
+Their silhouettes are kept pixel for pixel; this program builds the world
+around them and brings it to life as a seamless loop.
 
 Everything is drawn on a fixed palette.  The background is painted as a value
 on a purple ramp and ordered-dithered onto it; figures are placed pixel by
 pixel from hand-drawn sprites.
 
-Usage:  python3 void_vigil.py [out.png]      (also writes <out>_x8.png)
+Usage:  python3 void_vigil.py [out.png]
+Writes  out.png, out_x8.png          still (frame 0), native and 8x
+        out.gif, out_x4.gif          the animated loop, native and 4x
 """
 import math
 import random
@@ -20,16 +24,23 @@ import numpy as np
 from PIL import Image
 
 W = H = 128
-rnd = random.Random(7)
+FRAMES = 48
+FRAME_MS = 100
+TAU = 2 * math.pi
 
 # --- palette -----------------------------------------------------------------
-RAMP = [  # dark -> light, the whole background lives on this ramp
-    (8, 7, 12), (15, 13, 23), (22, 19, 34), (29, 25, 45), (36, 31, 56),
-    (44, 37, 67), (52, 43, 80), (60, 50, 93), (69, 58, 105), (80, 69, 119),
-    (94, 83, 135), (112, 101, 154), (136, 126, 178), (166, 158, 204),
+RAMP = [  # dark -> light; the whole world lives on this ramp
+    (7, 6, 14), (13, 12, 25), (20, 18, 36), (27, 23, 47), (34, 29, 58),
+    (42, 35, 70), (50, 42, 82), (58, 49, 95), (67, 58, 107), (78, 68, 121),
+    (92, 82, 137), (110, 101, 156), (134, 127, 180), (164, 160, 206),
+    (192, 196, 232), (224, 232, 250),
 ]
+RAMP_ARR = np.array(RAMP, dtype=np.uint8)
+TOP = len(RAMP) - 1
+
 VOID = (6, 5, 10)
 VOID_HI = (26, 20, 40)        # sheen on the void
+VOID_RIM = (40, 32, 66)       # light from above catching the void's top edges
 EYE = (236, 236, 248)
 EYE_DIM = (188, 186, 210)
 MASK = (238, 236, 246)
@@ -44,135 +55,183 @@ NAIL = (160, 162, 184)
 NAIL_LO = (92, 92, 116)
 HANDLE = (60, 46, 52)
 MOTE = (176, 168, 226)
-MOTE_HI = (240, 236, 255)
+MOTE_HI = (240, 238, 255)
+SHELL_HI = (132, 126, 164)    # fallen masks on the mound
+SHELL = (90, 84, 120)
+SHELL_LO = (58, 53, 84)
+SHELL_HOLE = (14, 12, 24)
 
 BAYER = np.array([[0, 8, 2, 10], [12, 4, 14, 6],
                   [3, 11, 1, 9], [15, 7, 13, 5]]) / 16.0
+BAYER_T = np.tile(BAYER, (H // 4, W // 4))
+
+YY, XX = np.mgrid[0:H, 0:W].astype(float)
+
+# layer ids in the background, used to decide how much light/fog reaches a pixel
+SKY, FAR, MID, NEAR, CHAIN, ROCK, GROUND = range(7)
+BEAM_REACH = np.array([1.0, 0.8, 0.55, 0.3, 0.35, 0.0, 0.0])
+FOG_REACH = np.array([1.0, 0.9, 0.7, 0.45, 0.6, 0.0, 0.0])
 
 
 def smooth(a, b, x):
-    t = min(max((x - a) / (b - a), 0.0), 1.0)
+    t = np.clip((np.asarray(x, dtype=float) - a) / (b - a), 0.0, 1.0)
     return t * t * (3 - 2 * t)
 
 
-# --- background as a value field ------------------------------------------------
-def sky_value(x, y):
-    """Index (float) on RAMP for the open sky/void at x, y."""
-    v = 8.7 - y * 0.058                         # light from above, falling off
-    # bright opening at the top centre
-    d = math.hypot((x - 64) / 1.5, y + 6)
-    v += 2.6 * math.exp(-(d / 26.0) ** 2)
-    # light shafts fanning down from the opening
-    ang = math.atan2(x - 64, y + 18)
-    for a0, s, w in ((-0.42, 0.9, 0.045), (-0.16, 1.2, 0.05),
-                     (0.05, 1.0, 0.035), (0.27, 1.1, 0.05), (0.5, 0.7, 0.04)):
-        v += s * math.exp(-((ang - a0) / w) ** 2) * (1 - smooth(20, 100, y))
-    # glow behind the Knight
-    v += 1.4 * math.exp(-(((x - 64.5) / 16) ** 2 + ((y - 92) / 11) ** 2))
-    # haze band just above the mound separates it from the sky
-    v += 1.3 * math.exp(-((y - 101) / 6.0) ** 2)
-    # vignette
-    r = math.hypot((x - 64) / 64, (y - 58) / 70)
-    v -= 2.4 * smooth(0.55, 1.25, r)
+# --- the static world, as a value field ----------------------------------------
+def sky_field():
+    x, y = XX, YY
+    v = 8.4 - y * 0.062                              # light from above
+    d = np.hypot((x - 64) / 1.5, y + 6)
+    v += 3.4 * np.exp(-(d / 24.0) ** 2)              # the opening overhead
+    v += 1.5 * np.exp(-(((x - 64.5) / 16) ** 2 + ((y - 92) / 11) ** 2))  # around the Knight
+    v += 1.3 * np.exp(-((y - 101) / 6.0) ** 2)       # haze over the mound
+    r = np.hypot((x - 64) / 64, (y - 58) / 70)
+    v -= 3.2 * smooth(0.5, 1.25, r)                  # vignette
     return v
 
 
-def spire_profile(xs, base, peak, width, onion=True):
-    """Height map (top y) of a Hallownest spire centred at xs."""
-    def top(x):
-        dx = abs(x - xs)
-        if dx > width:
-            return None
-        if onion:
-            # pointed dome over a straight tower, with a needle on top
-            if dx < 0.6:
-                return peak
-            dome_top = peak + 6
-            dome_r = width
-            if dx <= dome_r:
-                return dome_top + (dome_r - math.sqrt(max(dome_r**2 - dx**2, 0))) * 1.4 \
-                    - 3 * (1 - dx / dome_r) ** 3
-        return peak + 6
-    return top
+BEAMS = [  # angle from the opening, strength, width, shimmer phase
+    (-0.44, 0.8, 0.040, 0.0), (-0.20, 1.1, 0.050, 0.3), (0.00, 1.5, 0.060, 0.55),
+    (0.06, 0.9, 0.025, 0.1), (0.26, 1.0, 0.045, 0.75), (0.50, 0.6, 0.035, 0.4),
+]
 
 
-def build_background():
-    val = np.zeros((H, W))
-    for y in range(H):
-        for x in range(W):
-            val[y, x] = sky_value(x, y)
+def beam_field(t):
+    ang = np.arctan2(XX - 64, YY + 18)
+    fade = 1 - smooth(16, 104, YY)
+    v = np.zeros((H, W))
+    for a0, s, w, ph in BEAMS:
+        s = 1.35 * s * (1 + 0.2 * math.sin(TAU * (t + ph)))
+        v += s * np.exp(-((ang - a0) / w) ** 2)
+    return v * fade
 
-    # --- distant city of the Abyss: two layers of towers -----------------------
+
+def fog_field(t):
+    """Drifting fog banks; every component makes whole turns, so it loops."""
+    x, y = XX, YY
+    n = np.zeros((H, W))
+    for m, k, ph, a in ((3, 1, 0.2, 0.5), (5, -1, 1.7, 0.35), (7, 1, 3.1, 0.25),
+                        (4, -1, 4.4, 0.3)):
+        n += a * np.sin(TAU * (m * x / W + k * t) + ph + 0.06 * y)
+    n = 0.5 + 0.5 * n / 1.4
+    low = np.exp(-((y - 100) / 7.0) ** 2) * 1.2        # bank around the mound
+    mid = np.exp(-((y - 70) / 9.0) ** 2) * 0.7 * smooth(18, 40, np.abs(x - 64))
+    return (low + mid) * n
+
+
+def spire_top(x, xs, peak, width):
+    dx = abs(x - xs)
+    if dx > width:
+        return None
+    if dx < 0.6:
+        return peak
+    dome_top = peak + 6
+    return dome_top + (width - math.sqrt(max(width ** 2 - dx ** 2, 0))) * 1.4 \
+        - 3 * (1 - dx / width) ** 3
+
+
+def build_world():
+    rnd = random.Random(7)
+    sky = sky_field()
+    val = sky.copy()
+    layer = np.full((H, W), SKY)
+
+    def darken(x, y, amount, lid):
+        if 0 <= x < W and 0 <= y < H and layer[y, x] <= lid:
+            val[y, x] = sky[y, x] - amount
+            layer[y, x] = lid
+
+    # three layers of Hallownest spires, each sinking into the haze below
+    faint = [(10, 18, 3), (26, 34, 2), (40, 50, 2), (88, 48, 2), (101, 30, 2), (118, 14, 3)]
     far = [(6, 30, 4), (15, 40, 3), (22, 24, 5), (31, 46, 3), (99, 44, 3),
            (106, 26, 5), (114, 36, 4), (122, 20, 4)]
     near = [(2, 44, 6), (12, 58, 4), (116, 52, 5), (126, 40, 6), (108, 66, 3)]
-    for layer, dark, towers in ((0, 1.6, far), (1, 3.0, near)):
+    for lid, dark, towers in ((FAR, 0.8, faint), (MID, 1.6, far), (NEAR, 3.0, near)):
         for xs, peak, wdt in towers:
-            top = spire_profile(xs, 128, peak, wdt)
             for x in range(max(0, xs - wdt - 1), min(W, xs + wdt + 2)):
-                t = top(x)
-                if t is None:
+                top = spire_top(x, xs, peak, wdt)
+                if top is None:
                     continue
-                for y in range(int(round(t)), H):
-                    fog = 1 - 0.85 * smooth(70, 104, y)   # bases sink into haze
-                    val[y, x] = min(val[y, x], sky_value(x, y) - dark * fog)
-            # a needle spire
-            for y in range(peak - 6 - layer * 2, peak):
-                val[y, xs] = min(val[y, xs], sky_value(xs, y) - dark)
-            # a few arched windows, some faintly lit
-            if wdt >= 4:
+                for y in range(int(round(top)), H):
+                    darken(x, y, dark * (1 - 0.85 * smooth(70, 104, y)), lid)
+            for y in range(peak - 6 - (lid == NEAR) * 2, peak):     # needle
+                darken(xs, y, dark, lid)
+            if wdt >= 4:                                            # windows
                 for wy in range(peak + 12, H - 20, 9):
                     lit = rnd.random() < 0.18
                     for yy in range(wy, wy + 4):
-                        for xx in (xs - 1, xs + 1) if wdt >= 5 else (xs,):
+                        for xx in ((xs - 1, xs + 1) if wdt >= 5 else (xs,)):
                             if lit:
-                                val[yy, xx] = sky_value(xx, yy) + 1.2
+                                val[yy, xx] = sky[yy, xx] + 1.3
                             else:
-                                val[yy, xx] = min(val[yy, xx], sky_value(xx, yy) - dark - 1.0)
-    # bridges/walkways between the far towers
-    for x0, x1, yb in ((6, 22, 62), (99, 114, 70), (106, 122, 50)):
+                                val[yy, xx] = sky[yy, xx] - dark - 1.0
+                    if lit:                                         # arched top
+                        for xx in ((xs - 1, xs + 1) if wdt >= 5 else (xs,)):
+                            val[wy - 1, xx] = sky[wy - 1, xx] + 0.6
+    for x0, x1, yb in ((6, 22, 62), (99, 114, 70), (106, 122, 50)):   # walkways
         for x in range(x0, x1 + 1):
-            for y in (yb, yb + 1):
-                val[y, x] = min(val[y, x], sky_value(x, y) - 1.6)
+            darken(x, yb, 1.6, MID)
+            darken(x, yb + 1, 1.6, MID)
             if (x - x0) % 4 == 2:
-                val[yb + 2, x] = min(val[yb + 2, x], sky_value(x, yb + 2) - 1.6)
+                darken(x, yb + 2, 1.6, MID)
 
-    # --- chains hanging from the dark above -----------------------------------
+    # cavern rock overhanging the top corners, lit on its inner lip
+    for x in range(W):
+        side = x if x < 64 else W - 1 - x
+        depth = 17 * max(0.0, 1 - side / 34) ** 1.6
+        depth += 2.2 * max(0.0, math.sin(x * 1.31) * math.sin(x * 0.53)) * (depth > 0.5)
+        bottom = int(round(depth))
+        for y in range(0, bottom):
+            val[y, x] = 0.7 + 0.3 * (y == bottom - 1)
+            layer[y, x] = ROCK
+        if bottom > 0:
+            val[bottom - 1, x] = 2.2 + 1.2 * (1 - side / 34)
+
+    # chains hanging from the dark above, link by link
     for cx, length in ((27, 38), (36, 22), (93, 30), (101, 16)):
         for y in range(0, length):
-            x = cx + (1 if (y // 2) % 2 and y % 4 == 1 else 0)
-            val[y, x] = min(val[y, x], sky_value(x, y) - 2.4)
-        val[length, cx] = sky_value(cx, length) - 3.0
-        val[length + 1, cx] = sky_value(cx, length) - 3.0
+            x = cx + (1 if y % 4 == 1 else 0)
+            darken(x, y, 2.4, CHAIN)
+            if y % 4 == 3:
+                darken(cx + 1, y, 1.8, CHAIN)
+        for y in (length, length + 1):
+            darken(cx, y, 3.0, CHAIN)
+        darken(cx - 1, length + 1, 3.0, CHAIN)
+        darken(cx + 1, length + 1, 3.0, CHAIN)
 
-    # --- the mound ---------------------------------------------------------------
-    ground_top = np.zeros(W, dtype=int)
+    # the mound
+    gtop = np.zeros(W, dtype=int)
     for x in range(W):
         dx = x - 64.5
-        gt = 103.2 + 0.0028 * dx * dx + 0.6 * math.sin(x * 0.45) * smooth(8, 30, abs(dx))
-        ground_top[x] = int(round(gt))
+        gtop[x] = int(round(103.2 + 0.0028 * dx * dx
+                            + 0.6 * math.sin(x * 0.45) * float(smooth(8, 30, abs(dx)))))
     for x in range(W):
-        for y in range(ground_top[x], H):
-            depth = y - ground_top[x]
-            v = 1.3 - depth * 0.05 + 1.2 * math.exp(-((x - 64.5) / 18) ** 2) * math.exp(-depth / 4)
-            val[y, x] = max(v, 0.4)
-        # rim light where the light from above grazes the surface
+        pool = math.exp(-((x - 64.5) / 16) ** 2)       # where the light lands
+        for y in range(gtop[x], H):
+            depth = y - gtop[x]
+            v = 1.2 - depth * 0.05 + 1.6 * pool * math.exp(-depth / 4)
+            # strata of old shell, following the curve of the mound
+            if (depth + int(abs(x - 64.5) * 0.18)) % 6 == 2 and depth > 2:
+                v += 0.45 * math.exp(-depth / 14)
+            val[y, x] = max(v, 0.35)
+            layer[y, x] = GROUND
         lit = math.exp(-((x - 64.5) / 30) ** 2)
-        val[ground_top[x], x] = 3.6 + 3.2 * lit
-        if ground_top[x] + 1 < H:
-            val[ground_top[x] + 1, x] = 1.8 + 2.0 * lit
-    return val, ground_top
+        val[gtop[x], x] = 3.6 + 3.6 * lit
+        if gtop[x] + 1 < H:
+            val[gtop[x] + 1, x] = 1.8 + 2.4 * lit
+    # the Knight's shadow, thrown toward us by the light ahead of it
+    for y in range(104, 109):
+        half = 5.5 - (y - 104) * 0.8
+        for x in range(int(64.5 - half), int(64.5 + half) + 1):
+            if layer[y, x] == GROUND and y > gtop[x]:
+                val[y, x] -= 1.3
+    return val, layer, gtop
 
 
 def quantize(val):
-    img = np.zeros((H, W, 3), dtype=np.uint8)
-    n = len(RAMP) - 1
-    for y in range(H):
-        for x in range(W):
-            v = val[y, x] + (BAYER[y % 4, x % 4] - 0.47) * 0.95
-            i = int(math.floor(v + 0.5))
-            img[y, x] = RAMP[min(max(i, 0), n)]
-    return img
+    idx = np.floor(val + (BAYER_T - 0.47) * 0.95 + 0.5).astype(int)
+    return RAMP_ARR[np.clip(idx, 0, TOP)].copy()
 
 
 # --- drawing helpers -------------------------------------------------------------
@@ -183,7 +242,7 @@ class Canvas:
         self.overlay = []                           # eyes and loose specks, laid on top
 
     def put(self, x, y, c):
-        x, y = int(x), int(y)
+        x, y = int(round(x)), int(round(y))
         if 0 <= x < W and 0 <= y < H:
             self.img[y, x] = c
 
@@ -209,18 +268,28 @@ class Canvas:
                 else:
                     self.put(x0 + i, y0 + j, c)
 
+    def rim_light(self, region):
+        """Top edges of void matter catch the light from above (inside the
+        silhouette only, so the shapes do not change)."""
+        x0, y0, x1, y1 = region
+        v = self.void
+        for y in range(max(y0, 1), y1):
+            for x in range(x0, x1):
+                if v[y, x] and not v[y - 1, x] and v[y + 1, x] \
+                        and tuple(self.img[y, x]) == VOID:
+                    self.img[y, x] = VOID_RIM
 
-# --- the figures -----------------------------------------------------------------
+
+# --- the figures (from the artist's block-in) ----------------------------------------
 KEY = {'K': VOID, 'k': VOID_HI, 'E': EYE, 'e': EYE_DIM,
        'W': MASK, 'w': MASK2, 'm': MASK3, 'd': MASK4,
        'C': CLOAK_HI, 'c': CLOAK, 'o': CLOAK_LO,
        'N': NAIL_HI, 'n': NAIL, 'q': NAIL_LO, 'h': HANDLE,
        'x': 'speck'}
 
-# The shade rising out of the Knight, as the artist blocked it in: horns curving
-# in like a crescent, two small eyes set close, and a narrow body running
-# straight down between the Knight's horns.  Origin (56, 65).
-# K void, k sheen on the void, E eye, x a loose speck of void.
+# The shade rising out of the Knight: horns curving in like a crescent, two
+# small eyes set close, and a narrow body running straight down between the
+# Knight's horns.  Origin (56, 65).  K void, k sheen, E eye, x loose speck.
 SHADE = [
     ".....K.....K.....",   # 65
     "....K.......K....",   # 66
@@ -246,8 +315,8 @@ SHADE = [
     "......K....K.....",   # 86
 ]
 
-# The two siblings, also from the block-in.  The left one is tilted, leaning
-# away with its legs trailing; the right one floats upright.  'e' = dim eye.
+# The two siblings.  The left one is tilted, leaning away with its legs
+# trailing; the right one floats upright.  'e' = dim eye.
 SIB_L = [                  # origin (38, 63)
     ".........KKK......",
     "......K...KK..x...",
@@ -287,9 +356,6 @@ SIB_TINY = [
 ]
 
 # The Knight, seen from behind, looking up at the shade.  Origin (56, 84).
-# Follows the artist's block-in pixel for pixel: horns leaning in at the tips,
-# the pale back of the mask (no face - it is turned away from us), the cloak
-# swept out to the right, the left arm raised with the nail, and the stance.
 KNIGHT = [
     ".....Ww....Ww....",   # 84  horn tips
     "....Ww......Wm...",   # 85
@@ -320,20 +386,54 @@ KNIGHT_KEY.update({'W': (206, 200, 228), 'w': (150, 142, 178), 'm': (120, 110, 1
                    'd': (92, 82, 124), 'C': (72, 60, 112), 'c': (36, 25, 64),
                    'o': (22, 15, 40)})
 
+# Cracked vessel masks lying in the Abyss.  a lit rim, b shell, c shade, K hole.
+SHELL_KEY = {'a': SHELL_HI, 'b': SHELL, 'c': SHELL_LO, 'K': SHELL_HOLE}
+SHELL_UPRIGHT = [          # half buried, facing us
+    "a...a",
+    "ab.bc",
+    "abbbc",
+    "bKbKc",
+]
+SHELL_TILTED = [           # fallen on its side
+    "..aab.",
+    "aabbbc",
+    "bKbKbc",
+    ".cccc.",
+]
+SHELL_SMALL = [
+    "a.a",
+    "bbc",
+    "KbK",
+]
+# A great cracked mask in the foreground, half sunk and tilted.
+BIG_SHELL_KEY = {'a': (112, 106, 148), 'b': (72, 67, 102), 'c': (44, 40, 68),
+                 'K': (9, 8, 17)}
+BIG_SHELL = [
+    ".a..........",
+    ".ab.......a.",
+    ".ab......ab.",
+    ".abb....abb.",
+    ".abbbKbbbbbc",
+    "abbbbbKbbbbc",
+    "abKKKbbKKKbc",
+    "abKKKbbKKKbc",
+    "abbKKbbbKKcc",
+    ".bbbbbbbbcc.",
+    "..cccccccc..",
+]
 
-def draw_shade(cv):
-    cv.sprite(56, 65, SHADE, KEY)
+
+def bob(t, phase, amp=1.2):
+    return int(round(amp * math.sin(TAU * (t + phase))))
 
 
-def draw_siblings(cv):
-    cv.sprite(38, 63, SIB_L, KEY)
-    cv.sprite(85, 59, SIB_R, KEY)
-
-
-def draw_distant_siblings(cv):
+def draw_distant_siblings(cv, t):
     """Faint siblings lost in the haze, for depth."""
+    rnd = random.Random(5)
     far = (30, 24, 50)
-    for x0, y0, tail in ((20, 44, 1), (104, 38, -1), (30, 24, 1), (112, 82, -1), (8, 70, 1)):
+    for n, (x0, y0, tail) in enumerate(((20, 44, 1), (104, 38, -1), (30, 24, 1),
+                                        (112, 82, -1), (8, 70, 1))):
+        y0 += bob(t, n * 0.21, 1.0)
         for j, row in enumerate(SIB_TINY):
             for i, ch in enumerate(row):
                 if ch == 'K':
@@ -343,6 +443,15 @@ def draw_distant_siblings(cv):
         for k in range(4):
             if rnd.random() < 0.8:
                 cv.put(x0 + 1 + (k // 2) * tail, y0 + 4 + k, far)
+
+
+def draw_shade(cv):
+    cv.sprite(56, 65, SHADE, KEY)
+
+
+def draw_siblings(cv, t):
+    cv.sprite(38, 63 + bob(t, 0.0), SIB_L, KEY)
+    cv.sprite(85, 59 + bob(t, 0.37), SIB_R, KEY)
 
 
 def draw_knight(cv):
@@ -357,7 +466,7 @@ def draw_knight(cv):
 
 
 def draw_ground_detail(cv, gtop):
-    rnd = random.Random(12)        # own seed: editing figures won't move it
+    rnd = random.Random(12)
     # grass and thorn tufts along the mound's lit edge
     for x in range(2, W - 2):
         g = gtop[x]
@@ -370,10 +479,24 @@ def draw_ground_detail(cv, gtop):
             for k in range(1, h + 1):
                 xx = x + (lean if k == h else 0)
                 cv.put(xx, g - k, RAMP[2] if k < h else RAMP[4])
-    # a few shells/stones half sunk in the dark
-    for x, dy, c in ((30, 3, RAMP[5]), (31, 3, RAMP[4]), (95, 4, RAMP[5]),
-                     (96, 4, RAMP[4]), (96, 3, RAMP[6]), (46, 2, RAMP[4]),
-                     (82, 2, RAMP[4]), (18, 6, RAMP[3]), (110, 5, RAMP[3])):
+    # discarded vessels: masks half sunk in the mound
+    for spr, x, sink in ((SHELL_UPRIGHT, 22, 1), (SHELL_TILTED, 99, 1),
+                         (SHELL_SMALL, 41, 1), (SHELL_SMALL, 84, 1)):
+        h = len(spr)
+        base = max(gtop[x + k] for k in range(len(spr[0])))
+        cv.sprite(x, base - h + 1 + sink, spr, SHELL_KEY)
+    # the great mask in the foreground, and a nail planted as a grave marker
+    for y in range(101, 121):
+        x = 110 + (1 if y > 112 else 0)
+        cv.put(x, y, (44, 40, 66))
+        cv.put(x + 1, y, (22, 20, 36))
+    cv.put(110, 100, (120, 116, 156))                # its pommel catching light
+    cv.put(110, 101, (96, 92, 128))
+    for x in range(108, 114):                        # crossguard
+        cv.put(x, 104, (60, 56, 86) if x < 111 else (30, 27, 46))
+    # a few stones half sunk in the dark
+    for x, dy, c in ((30, 3, RAMP[5]), (31, 3, RAMP[4]), (95, 5, RAMP[5]),
+                     (46, 2, RAMP[4]), (18, 6, RAMP[3]), (110, 5, RAMP[3])):
         cv.put(x, gtop[x] + dy, c)
     # small pale flowers near the Knight's feet
     for x, c in ((52, MOTE), (54, RAMP[12]), (76, MOTE), (79, RAMP[12])):
@@ -384,7 +507,7 @@ def draw_ground_detail(cv, gtop):
 
 def draw_foreground(cv):
     """Near-black grass framing the bottom corners."""
-    rnd = random.Random(13)        # own seed: editing figures won't move it
+    rnd = random.Random(13)
     dark = RAMP[0]
     blades = []
     for side in (-1, 1):
@@ -394,55 +517,128 @@ def draw_foreground(cv):
             lean = rnd.uniform(0.15, 0.6) * (-side) * rnd.choice((1, 1, -0.5))
             blades.append((base_x, h, lean))
     for bx, h, lean in blades:
-        for t in range(int(h)):
-            f = t / h
-            x = bx + lean * t + 1.8 * f * f * (1 if lean > 0 else -1)
-            y = H - 1 - t
+        for s in range(int(h)):
+            f = s / h
+            x = bx + lean * s + 1.8 * f * f * (1 if lean > 0 else -1)
+            y = H - 1 - s
             w = 1.6 * (1 - f) + 0.4
             for dx in range(int(-w), int(w) + 1):
-                cv.put(x + dx, y, dark)
-    # a lit edge on a few blade tips
-    for bx, h, lean in blades[::5]:
-        t = int(h) - 1
-        cv.put(bx + lean * t + 1.8 * (1 if lean > 0 else -1), H - 1 - t, RAMP[3])
+                cv.put(int(x + dx), y, dark)
+    # the great mask, sitting among the grass with a few blades in front
+    cv.sprite(13, 112, BIG_SHELL, BIG_SHELL_KEY)
+    for bx, h in ((15.5, 7), (25.5, 10)):
+        for s in range(h):
+            cv.put(int(bx + 0.25 * s), H - 1 - s - 4, dark)
+            if s < h * 0.5:
+                cv.put(int(bx + 0.25 * s) + 1, H - 1 - s - 4, dark)
+    for bx, h, lean in blades[::5]:       # a lit edge on a few blade tips
+        s = int(h) - 1
+        cv.put(int(bx + lean * s + 1.8 * (1 if lean > 0 else -1)), H - 1 - s, RAMP[3])
 
 
-def draw_particles(cv, gtop):
-    rnd = random.Random(11)        # own seed: editing figures won't move it
-    # falling light motes
-    for _ in range(46):
-        x = rnd.randrange(W)
-        y = rnd.randrange(4, 100)
-        if cv.void[y, x]:
+# --- things that move -----------------------------------------------------------------
+_rm = random.Random(11)
+MOTES = [dict(x=_rm.uniform(2, 126), y=_rm.uniform(-4, 92), fall=_rm.uniform(10, 22),
+              sway=_rm.uniform(0.5, 1.8), ph=_rm.random(), ph2=_rm.random(),
+              big=_rm.random() < 0.18, peak=_rm.uniform(0.6, 1.0))
+         for _ in range(54)]
+SPARKLES = [(38, 30, 0.0), (91, 22, 0.4), (77, 48, 0.7), (21, 58, 0.2),
+            (106, 60, 0.55), (52, 42, 0.85)]
+_rv = random.Random(21)
+RISING = []   # void specks lifting off the shade's horns and head, and the siblings
+for x0, y0, n, spread in ((64.5, 68, 8, 7.0), (46, 63, 4, 3), (90, 59, 3, 2.5)):
+    for _ in range(n):
+        RISING.append(dict(x=x0 + _rv.gauss(0, spread), y=y0 + _rv.uniform(-2, 3),
+                           rise=_rv.uniform(12, 22), ph=_rv.random(),
+                           sway=_rv.uniform(0.3, 1.2), ph2=_rv.random(),
+                           sib=(x0 != 64.5) * (1 if x0 < 64 else 2)))
+
+
+def draw_motes(cv, t):
+    for m in MOTES:
+        u = (t + m['ph']) % 1.0
+        x = m['x'] + m['sway'] * math.sin(TAU * (u + m['ph2']))
+        y = m['y'] + m['fall'] * u
+        b = math.sin(math.pi * u) * m['peak']
+        xi, yi = int(round(x)), int(round(y))
+        if not (0 <= xi < W and 0 <= yi < 100) or cv.void[yi, xi]:
             continue
-        b = rnd.random()
-        cv.put(x, y, MOTE_HI if b < 0.2 else (MOTE if b < 0.6 else RAMP[11]))
-    # a few soft sparkles
-    for x, y in ((38, 30), (91, 22), (77, 48), (21, 58), (106, 60), (52, 42)):
-        cv.put(x, y, MOTE_HI)
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            cv.put(x + dx, y + dy, RAMP[11])
+        if b > 0.72:
+            cv.put(xi, yi, MOTE_HI)
+            if m['big']:
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    cv.put(xi + dx, yi + dy, RAMP[11])
+        elif b > 0.45:
+            cv.put(xi, yi, MOTE)
+        elif b > 0.2:
+            cv.put(xi, yi, RAMP[11])
+    for x, y, ph in SPARKLES:            # twinkling
+        b = 0.5 + 0.5 * math.sin(TAU * (2 * t + ph))
+        if b > 0.25:
+            cv.put(x, y, MOTE_HI if b > 0.6 else MOTE)
+        if b > 0.6:
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                cv.put(x + dx, y + dy, RAMP[11])
+            if b > 0.9:
+                for dx, dy in ((2, 0), (-2, 0), (0, 2), (0, -2)):
+                    cv.put(x + dx, y + dy, RAMP[10])
 
 
-def main(out):
-    val, gtop = build_background()
-    img = quantize(val)
-    cv = Canvas(img)
-    draw_distant_siblings(cv)
+def draw_rising(cv, t):
+    for s in RISING:
+        u = (t + s['ph']) % 1.0
+        dy = 0
+        if s['sib'] == 1:
+            dy = bob(t, 0.0)
+        elif s['sib'] == 2:
+            dy = bob(t, 0.37)
+        x = s['x'] + s['sway'] * math.sin(TAU * (u + s['ph2']))
+        y = s['y'] + dy - s['rise'] * u
+        xi, yi = int(round(x)), int(round(y))
+        if not (0 <= xi < W and 0 <= yi < H) or cv.void[yi, xi]:
+            continue
+        if u < 0.08:
+            continue                      # still inside the body
+        cv.put(xi, yi, VOID if u < 0.6 else ((24, 18, 40) if u < 0.82 else (40, 33, 64)))
+
+
+# --- one frame --------------------------------------------------------------------
+WORLD = None
+
+
+def render(t):
+    global WORLD
+    if WORLD is None:
+        WORLD = build_world()
+    val, layer, gtop = WORLD
+    v = val + beam_field(t) * BEAM_REACH[layer] + fog_field(t) * FOG_REACH[layer]
+    cv = Canvas(quantize(v))
+    draw_distant_siblings(cv, t)
     draw_shade(cv)
-    draw_siblings(cv)
-    draw_particles(cv, gtop)
+    draw_siblings(cv, t)
+    cv.rim_light((30, 55, 100, 90))
+    draw_motes(cv, t)
+    draw_rising(cv, t)
     for x, y, c in cv.overlay:
         cv.put(x, y, c)
     draw_knight(cv)
     draw_ground_detail(cv, gtop)
     draw_foreground(cv)
+    return Image.fromarray(cv.img, 'RGB')
 
-    im = Image.fromarray(cv.img, 'RGB')
-    im.save(out)
-    big = out[:-4] + '_x8.png'
-    im.resize((W * 8, H * 8), Image.NEAREST).save(big)
-    print('wrote', out, big)
+
+def main(out):
+    stem = out[:-4]
+    frames = [render(k / FRAMES) for k in range(FRAMES)]
+    frames[0].save(out)
+    frames[0].resize((W * 8, H * 8), Image.NEAREST).save(stem + '_x8.png')
+    for scale, path in ((1, stem + '.gif'), (4, stem + '_x4.gif')):
+        fr = [f.resize((W * scale, H * scale), Image.NEAREST) for f in frames]
+        pal = [f.quantize(colors=255, method=Image.Quantize.MAXCOVERAGE, dither=Image.Dither.NONE)
+               for f in fr]
+        pal[0].save(path, save_all=True, append_images=pal[1:], duration=FRAME_MS,
+                    loop=0, optimize=False, disposal=1)
+    print('wrote', out, stem + '_x8.png', stem + '.gif', stem + '_x4.gif')
 
 
 if __name__ == '__main__':
