@@ -174,7 +174,7 @@ header {
         <div class="pen" id="pen" hidden><div class="ring" id="penRing"></div><span class="tag">Claude</span></div>
       </div>
       <div class="notes">
-        <p><strong>How Claude paints here.</strong> Each stroke is a path Claude places by hand: a list of points with pen pressure, plus the brush it picked. The easel drags the brush through those points at hand speed. There are no shape, fill or gradient commands, only the same four tools you have.</p>
+        <p><strong>How Claude paints here.</strong> Each stroke is a path Claude places by hand: a list of points with pen pressure, plus the brush it picked. The easel drags the brush through those points at hand speed. There are no shape, fill or gradient commands, only the same four tools you have. A round marked as your touch-ups is a sheet you saved and sent back; it goes down as one layer and Claude paints on from there.</p>
         <p id="msg" hidden></p>
       </div>
     </section>
@@ -272,13 +272,28 @@ header {
     } else if (st.t === 's') {
       const L = live.last;
       if (L) {
-        const sz = Math.min(640, Math.ceil(D)), r = sz / 2;
-        sctx.globalCompositeOperation = 'copy';
-        sctx.drawImage(paint, L.X - r, L.Y - r, sz, sz, 0, 0, sz, sz);
-        sctx.globalCompositeOperation = 'destination-in';
-        sctx.drawImage(maskCv, 0, 0, sz, sz);
-        pctx.save(); pctx.globalAlpha = st.o;
-        pctx.drawImage(smudgeCv, 0, 0, sz, sz, X - r, Y - r, sz, sz); pctx.restore();
+        // Drag the paint under the last dab to this one, mixing pixel by pixel with a soft falloff.
+        // Done on the pixels directly with unbiased rounding: canvas blending rounds down a little on
+        // every pass, and a smudge stacks so many passes that the paint used to darken into ribbons.
+        const r = Math.max(1, Math.min(320, Math.round(D / 2))), w = 2 * r;
+        const ox = Math.round(L.X - X), oy = Math.round(L.Y - Y);
+        const x0 = Math.round(X) - r, y0 = Math.round(Y) - r;
+        const bx = Math.max(0, Math.min(x0, x0 + ox)), by = Math.max(0, Math.min(y0, y0 + oy));
+        const bx1 = Math.min(paint.width, Math.max(x0, x0 + ox) + w), by1 = Math.min(paint.height, Math.max(y0, y0 + oy) + w);
+        const bw = bx1 - bx, bh = by1 - by;
+        if (bw > 0 && bh > 0) {
+          const img = pctx.getImageData(bx, by, bw, bh), d = img.data, src = d.slice();
+          for (let j = 0; j < w; j++) for (let i = 0; i < w; i++) {
+            const ddx = i - r + .5, ddy = j - r + .5, dist = Math.sqrt(ddx * ddx + ddy * ddy) / r;
+            if (dist >= 1) continue;
+            const fall = dist < .4 ? 1 : 1 - (dist - .4) / .6, a = st.o * .55 * fall * fall;
+            const tx = x0 + i - bx, ty = y0 + j - by, sx = tx + ox, sy = ty + oy;
+            if (tx < 0 || ty < 0 || tx >= bw || ty >= bh || sx < 0 || sy < 0 || sx >= bw || sy >= bh) continue;
+            const ti = (ty * bw + tx) * 4, si = (sy * bw + sx) * 4;
+            for (let c = 0; c < 4; c++) d[ti + c] = d[ti + c] + (src[si + c] - d[ti + c]) * a;
+          }
+          pctx.putImageData(img, bx, by);
+        }
       }
     }
     live.last = { X, Y };
@@ -365,7 +380,7 @@ header {
   function enqueueNew() {
     for (const b of batches) {
       if (b.seq <= lastEnq) continue;
-      queue.push({ label: b.label || '' });
+      queue.push({ label: b.label || '', base: b.base || null });
       for (const s of (b.strokes || [])) queue.push({ st: s });
       lastEnq = b.seq;
     }
@@ -386,7 +401,19 @@ header {
           if (!skip && now < liftUntil) break;
           const item = queue.shift();
           if (!item) break;
-          if (item.label != null && !item.st) { currentLabel = item.label; refreshStatus(); continue; }
+          if (item.label != null && !item.st) {
+            if (item.base) { // a saved sheet (a viewer's touch-ups) laid down as a layer
+              if (!item.img) {
+                item.img = new Image();
+                item.img.onload = () => { item.ready = true; };
+                item.img.onerror = () => { item.ready = true; item.failed = true; showMsg('Could not load the saved sheet for this round.'); };
+                item.img.src = item.base;
+              }
+              if (!item.ready) { queue.unshift(item); currentLabel = item.label; refreshStatus(); break; }
+              if (!item.failed) { pctx.save(); pctx.globalAlpha = 1; pctx.globalCompositeOperation = 'source-over'; pctx.drawImage(item.img, 0, 0, paint.width, paint.height); pctx.restore(); }
+            }
+            currentLabel = item.label; refreshStatus(); continue;
+          }
           const st = norm(item.st); const dabs = planDabs(st);
           if (!dabs.length) continue;
           showStrokeInUI(st); beginStroke(st);
