@@ -1,0 +1,16 @@
+{
+ "name": "paired",
+ "mode": "paired",
+ "bottleneck": 16,
+ "pool": 0,
+ "pool_seed": 7,
+ "leaky": false,
+ "steps": 4000,
+ "bs": 32,
+ "kmax": 3,
+ "lr": 0.0005,
+ "threads": 3,
+ "depth": 5,
+ "enc_depth": 2,
+ "contrastive": 0.1
+}

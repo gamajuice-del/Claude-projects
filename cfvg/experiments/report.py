@@ -64,7 +64,7 @@ def bars(runs, path):
 
 
 def pool_plot(path):
-    pts = [(30, "pool30"), (300, "pool300"), (3000, "pool3000"), (1e5, "cfvg")]
+    pts = [(30, "pool30"), (300, "pool300"), (1e5, "cfvg")]
     pts = [(n, r) for n, r in pts if load(r)]
     if len(pts) < 2:
         return None
@@ -91,8 +91,8 @@ def pool_plot(path):
 
 def main():
     out = ["# CFVG synthetic-world experiments: results", ""]
-    core = ["cfvg", "paired", "cfvg_direct", "paired_direct"]
-    bars(core + ["pool30", "pool300", "pool3000", "leaky"], f"{R}/overview.png")
+    core = ["cfvg", "cfvg_long", "cfvg_nocontrast", "paired", "cfvg_direct"]
+    bars(core + ["pool30", "pool300", "leaky"], f"{R}/overview.png")
     out += ["![overview](overview.png)", ""]
     for split, title in (("id", "Unseen worlds (inside the training distribution)"),
                          ("ood", "Unseen region: stronger gravity than any training world + unseen colour band")):
@@ -103,7 +103,18 @@ def main():
     p = pool_plot(f"{R}/pool_scaling.png")
     if p:
         out += ["## World diversity vs zero-shot generalisation", "", p, "", "![pool](pool_scaling.png)", ""]
-    main_res = load("cfvg")
+    curve = [(st, r) for st, r in ((1500, "cfvg_at1500"), (4000, "cfvg"), (12000, "cfvg_long")) if load(r)]
+    if len(curve) > 1:
+        out += ["## Training length (main model)", "",
+                "| steps | context score (unseen) | context score (OOD) | instr acc | copy rate | shape err | hold err | ghost err |",
+                "|---|---|---|---|---|---|---|---|"]
+        for st, r in curve:
+            x = load(r)
+            out.append(f"| {st} | {x['id']['context_score']:.3f} | {x['ood']['context_score']:.3f} | "
+                       f"{x['id']['instr_acc']:.3f} | {x['id']['copy_rate']:.3f} | {x['id']['err_shape']:.3f} | "
+                       f"{x['id']['err_hold']:.3f} | {x['id']['err_ghost']:.3f} |")
+        out.append("")
+    main_res = load("cfvg_long") if load("cfvg_long") and "k_sweep" in load("cfvg_long") else load("cfvg")
     if main_res and "k_sweep" in main_res:
         out += ["## Number of reference clips at inference (trained with 1–3)", "",
                 "| K | context score | instruction acc | copy rate |", "|---|---|---|---|"]
