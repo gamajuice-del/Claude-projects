@@ -8,6 +8,11 @@ out of it, and two siblings drifting in purple light that falls from above.
 Their silhouettes are kept pixel for pixel; this program builds the world
 around them and brings it to life as a seamless loop.
 
+The story: the Knight has lost the Void Heart (it lies cracked on the mound)
+and with it control of the void.  The Radiance, consumed by that void, looms
+behind everything, eclipsing her own light; void drips from her tattered wings
+and frayed gown and pours down in threads into the shades.
+
 Everything is drawn on a fixed palette.  The background is painted as a value
 on a purple ramp and ordered-dithered onto it; figures are placed pixel by
 pixel from hand-drawn sprites.
@@ -118,6 +123,90 @@ def fog_field(t):
     low = np.exp(-((y - 100) / 7.0) ** 2) * 1.2        # bank around the mound
     mid = np.exp(-((y - 70) / 9.0) ** 2) * 0.7 * smooth(18, 40, np.abs(x - 64))
     return (low + mid) * n
+
+
+# --- the voided Radiance, looming behind everything ------------------------------
+# She is drawn as a density field: 1 where her void body fully hides the light,
+# fading toward the tattered tips of her wings and the hem of her gown, which
+# dissolve into the void that becomes the shades.
+HEAD = (64.0, 24.0)
+SHOULDER_L, SHOULDER_R = (59.0, 33.5), (69.0, 33.5)
+# (elevation in degrees from horizontal, length, half width) for each feather
+UPPER_WING = [(5, 44, 4.6), (15, 47, 5.2), (25, 45, 5.0), (35, 39, 4.6), (45, 31, 4.0)]
+LOWER_WING = [(-10, 35, 4.4), (-21, 33, 4.4), (-33, 29, 4.0), (-45, 23, 3.4)]
+CROWN = [(-80, 12), (-60, 14), (-40, 16), (-20, 18), (0, 20), (20, 18), (40, 16),
+         (60, 14), (80, 12)]   # spike angle from straight up, length
+HASH = np.modf(np.sin(XX * 12.9898 + YY * 78.233) * 43758.5453)[0] % 1.0
+
+
+def _feather(ox, oy, ang, length, half):
+    """Lens-shaped feather from (ox, oy) along ang (radians, screen coords).
+    Returns density and the fraction along the feather (0 base .. 1 tip)."""
+    dx, dy = math.cos(ang), math.sin(ang)
+    px, py = XX - ox, YY - oy
+    along = px * dx + py * dy
+    perp = np.abs(-px * dy + py * dx)
+    f = along / length
+    width = half * np.clip(1 - (2 * f - 1) ** 2, 0, 1) ** 0.6
+    inside = (f > 0) & (f < 1) & (perp <= width + 0.35)
+    vein = inside & (perp < 0.55) & (f > 0.25) & (f < 0.92)
+    return inside, np.clip(f, 0, 1), vein
+
+
+def radiance_field(t):
+    """Density D, her own value R, and her feather veins, for time t."""
+    D = np.zeros((H, W))
+    R = np.full((H, W), 2.0)
+    veins = np.zeros((H, W), dtype=bool)
+    breathe = 2.2 * math.sin(TAU * t)                      # wings rise and fall
+    for (sx, sy), side in ((SHOULDER_L, -1), (SHOULDER_R, 1)):
+        for wing, lift in ((UPPER_WING, 1.0), (LOWER_WING, 0.6)):
+            for k, (elev, length, half) in enumerate(wing):
+                e = math.radians(elev + breathe * lift)
+                ang = math.atan2(-math.sin(e), side * math.cos(e))
+                inside, f, vein = _feather(sx, sy, ang, length, half)
+                # tattered: the outer part of each feather is eaten by holes
+                keep = HASH > (f - 0.62) * 2.2 + 0.03 * k
+                dens = np.where(inside & keep, 1.0 - 0.38 * f ** 2, 0)
+                R = np.where(dens > D, 1.2 + 2.0 * f ** 1.3, R)
+                D = np.maximum(D, dens)
+                veins |= vein & keep
+    hx, hy = HEAD
+    # crown of spikes around the head
+    for a, length in CROWN:
+        ang = math.radians(a - 90)
+        inside, f, _ = _feather(hx + 3 * math.cos(ang), hy + 3 * math.sin(ang),
+                                ang, length, 1.9)
+        D = np.maximum(D, np.where(inside, 1.0, 0))
+    # head, neck and body
+    head = ((XX - hx) / 6.6) ** 2 + ((YY - hy) / 6.2) ** 2 <= 1
+    D = np.maximum(D, head * 1.0)
+    for y0, y1, w0, w1 in ((27, 34, 3.4, 5.2), (34, 45, 5.2, 4.6), (45, 62, 4.6, 7.5)):
+        f = np.clip((YY - y0) / (y1 - y0), 0, 1)
+        half = w0 + (w1 - w0) * f
+        body = (YY >= y0) & (YY < y1) & (np.abs(XX - hx) <= half)
+        if y0 == 45:
+            # the gown frays into strands of void
+            strands = 0.5 + 0.5 * np.sin(XX * 1.9 + 0.7 * np.sin(YY * 0.4 + TAU * t))
+            body &= (HASH * 0.6 + strands * 0.6) > (f * 1.15)
+        D = np.maximum(D, body * (1.0 - 0.35 * f * (y0 == 45)))
+    R = np.where(head | ((YY < 46) & (np.abs(XX - hx) < 5)), 1.6, R)
+    return D, R, veins
+
+
+def corona(t):
+    """The light she is eclipsing."""
+    d = np.hypot(XX - HEAD[0], (YY - HEAD[1]) * 1.1)
+    return (2.6 + 0.25 * math.sin(TAU * 2 * t)) * np.exp(-(d / 19.0) ** 2)
+
+
+# her eyes share the droop of her shades' eyes, larger
+RAD_EYES = [(x, y) for x0, y0 in ((60, 23),) for x, y in
+            ((x0, y0), (x0 + 1, y0), (x0 + 2, y0), (x0 - 1, y0 + 1), (x0, y0 + 1),
+             (x0 + 1, y0 + 1), (x0 + 2, y0 + 1), (x0 - 1, y0 + 2), (x0, y0 + 2),
+             (x0 - 1, y0 + 3))]
+RAD_EYES += [(128 - x, y) for x, y in RAD_EYES]
+HER_REACH = np.array([1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0])   # behind the near city
 
 
 def spire_top(x, xs, peak, width):
@@ -423,6 +512,17 @@ BIG_SHELL = [
 ]
 
 
+# The Void Heart the Knight has lost: cracked, lying on the mound.
+VOID_HEART_KEY = {'a': (176, 172, 214), 'b': (110, 104, 150), 'K': VOID, 'k': (34, 26, 56)}
+VOID_HEART = [
+    ".a.b.",
+    "aKaKb",
+    "aKkK.",
+    ".bKb.",
+    "..b..",
+]
+
+
 def bob(t, phase, amp=1.2):
     return int(round(amp * math.sin(TAU * (t + phase))))
 
@@ -498,8 +598,11 @@ def draw_ground_detail(cv, gtop):
     for x, dy, c in ((30, 3, RAMP[5]), (31, 3, RAMP[4]), (95, 5, RAMP[5]),
                      (46, 2, RAMP[4]), (18, 6, RAMP[3]), (110, 5, RAMP[3])):
         cv.put(x, gtop[x] + dy, c)
+    # the lost Void Heart, cracked, a few steps from the Knight
+    cv.sprite(76, gtop[78] - 3, VOID_HEART, VOID_HEART_KEY)
+    cv.put(80, gtop[80], (70, 64, 100))            # a chip broken off it
     # small pale flowers near the Knight's feet
-    for x, c in ((52, MOTE), (54, RAMP[12]), (76, MOTE), (79, RAMP[12])):
+    for x, c in ((52, MOTE), (54, RAMP[12]), (86, RAMP[12])):
         g = gtop[x]
         cv.put(x, g - 1, RAMP[3])
         cv.put(x, g - 2, c)
@@ -545,13 +648,22 @@ MOTES = [dict(x=_rm.uniform(2, 126), y=_rm.uniform(-4, 92), fall=_rm.uniform(10,
 SPARKLES = [(38, 30, 0.0), (91, 22, 0.4), (77, 48, 0.7), (21, 58, 0.2),
             (106, 60, 0.55), (52, 42, 0.85)]
 _rv = random.Random(21)
-RISING = []   # void specks lifting off the shade's horns and head, and the siblings
-for x0, y0, n, spread in ((64.5, 68, 8, 7.0), (46, 63, 4, 3), (90, 59, 3, 2.5)):
-    for _ in range(n):
-        RISING.append(dict(x=x0 + _rv.gauss(0, spread), y=y0 + _rv.uniform(-2, 3),
-                           rise=_rv.uniform(12, 22), ph=_rv.random(),
-                           sway=_rv.uniform(0.3, 1.2), ph2=_rv.random(),
-                           sib=(x0 != 64.5) * (1 if x0 < 64 else 2)))
+DRIPS = []    # void dripping from the Radiance's wings and frayed gown
+for x0, y0 in ((36, 44), (42, 47), (49, 51), (55, 56), (60, 60), (68, 60), (73, 56),
+               (79, 51), (86, 47), (92, 44), (30, 40), (98, 40), (58, 58), (70, 58)):
+    DRIPS.append(dict(x=x0 + _rv.uniform(-1.5, 1.5), y=y0, fall=_rv.uniform(8, 16),
+                      ph=_rv.random(), sway=_rv.uniform(0.2, 0.8), ph2=_rv.random()))
+# threads of void pouring from her into the shade and the siblings
+THREADS = [((64.0, 60.0), (64.5, 63.0), (64.0, 66.0), 0.0),
+           ((52.0, 52.0), (47.0, 56.0), (47.5, 61.0), 1),
+           ((77.0, 51.0), (86.0, 53.0), (90.5, 57.0), 2)]
+
+
+def _bezier(p0, p1, p2, u):
+    a = (1 - u) ** 2
+    b = 2 * (1 - u) * u
+    c = u ** 2
+    return a * p0[0] + b * p1[0] + c * p2[0], a * p0[1] + b * p1[1] + c * p2[1]
 
 
 def draw_motes(cv, t):
@@ -584,22 +696,34 @@ def draw_motes(cv, t):
                     cv.put(x + dx, y + dy, RAMP[10])
 
 
-def draw_rising(cv, t):
-    for s in RISING:
-        u = (t + s['ph']) % 1.0
-        dy = 0
-        if s['sib'] == 1:
-            dy = bob(t, 0.0)
-        elif s['sib'] == 2:
-            dy = bob(t, 0.37)
-        x = s['x'] + s['sway'] * math.sin(TAU * (u + s['ph2']))
-        y = s['y'] + dy - s['rise'] * u
+def draw_drips(cv, t):
+    for d in DRIPS:
+        u = (t + d['ph']) % 1.0
+        x = d['x'] + d['sway'] * math.sin(TAU * (u + d['ph2']))
+        y = d['y'] + d['fall'] * u * u
         xi, yi = int(round(x)), int(round(y))
-        if not (0 <= xi < W and 0 <= yi < H) or cv.void[yi, xi]:
+        if not (0 <= xi < W and 0 <= yi < H) or cv.void[yi, xi] or u < 0.06:
             continue
-        if u < 0.08:
-            continue                      # still inside the body
-        cv.put(xi, yi, VOID if u < 0.6 else ((24, 18, 40) if u < 0.82 else (40, 33, 64)))
+        cv.put(xi, yi, VOID if u < 0.55 else ((24, 18, 40) if u < 0.8 else (40, 33, 64)))
+
+
+def draw_threads(cv, t):
+    """Thin streams of void, with beads of it flowing down into her shades."""
+    for p0, p1, p2, who in THREADS:
+        dy = bob(t, 0.0) if who == 1 else (bob(t, 0.37) if who == 2 else 0)
+        p2 = (p2[0], p2[1] + dy)
+        n = 28
+        for k in range(n + 1):
+            u = k / n
+            x, y = _bezier(p0, p1, p2, u)
+            xi, yi = int(round(x)), int(round(y))
+            if 0 <= xi < W and 0 <= yi < H and not cv.void[yi, xi] \
+                    and (xi * 7 + yi * 3) % 5 != 0:
+                cv.put(xi, yi, (30, 23, 50))
+        for b in range(3):                  # beads travelling down
+            u = (t * 2 + b / 3 + who * 0.13) % 1.0
+            x, y = _bezier(p0, p1, p2, u)
+            cv.put(x, y, VOID)
 
 
 # --- one frame --------------------------------------------------------------------
@@ -611,18 +735,50 @@ def render(t):
     if WORLD is None:
         WORLD = build_world()
     val, layer, gtop = WORLD
-    v = val + beam_field(t) * BEAM_REACH[layer] + fog_field(t) * FOG_REACH[layer]
+    beams = beam_field(t) * BEAM_REACH[layer]
+    # the sky behind her: her eclipsed light, and the beams escaping around her
+    v = val + corona(t) * HER_REACH[layer] + beams
+    D, R, veins = radiance_field(t)
+    D = D * HER_REACH[layer]
+    v = v * (1 - D) + (R + 0.2 * beams) * D
+    v = np.where(veins & (D > 0.3), v + 1.5, v)              # feather veins
+    # her outline catches the light she is hiding
+    solid = D > 0.55
+    around = (np.roll(solid, 1, 0) & np.roll(solid, -1, 0)
+              & np.roll(solid, 1, 1) & np.roll(solid, -1, 1))
+    top_edge = solid & ~np.roll(solid, 1, 0)
+    edge = np.where(YY < 33, solid & ~around, top_edge)   # crown: all round
+    dist = np.hypot(XX - HEAD[0], YY - HEAD[1])
+    glow = 2.6 * np.exp(-(dist / 24.0) ** 2) + 1.4 * np.exp(-(dist / 60.0) ** 2)
+    v = np.where(edge, v + glow, v)
+    v = v + fog_field(t) * FOG_REACH[layer]
     cv = Canvas(quantize(v))
+    # her eyes, pulsing - the same shape as her shades' eyes
+    pulse = 0.5 + 0.5 * math.sin(TAU * t)
+    for x, y in RAD_EYES:
+        cv.put(x, y, (236, 236, 250) if pulse > 0.45 else (194, 192, 226))
+    if pulse > 0.75:
+        for x, y in ((58, 24), (58, 25), (58, 26), (70, 24), (70, 25), (70, 26)):
+            cv.put(x, y, RAMP[7])
     draw_distant_siblings(cv, t)
+    draw_threads(cv, t)
     draw_shade(cv)
     draw_siblings(cv, t)
     cv.rim_light((30, 55, 100, 90))
     draw_motes(cv, t)
-    draw_rising(cv, t)
+    draw_drips(cv, t)
     for x, y, c in cv.overlay:
         cv.put(x, y, c)
     draw_knight(cv)
     draw_ground_detail(cv, gtop)
+    # a glint passing over the lost Void Heart
+    g = (t * 2) % 1.0
+    if g < 0.18:
+        gx, gy = 77, gtop[78] - 3
+        cv.put(gx, gy, MOTE_HI)
+        if g < 0.1:
+            for dx, dy in ((1, 0), (-1, 0), (0, -1)):
+                cv.put(gx + dx, gy + dy, RAMP[12])
     draw_foreground(cv)
     return Image.fromarray(cv.img, 'RGB')
 
