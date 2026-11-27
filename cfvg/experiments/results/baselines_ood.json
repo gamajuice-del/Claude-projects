@@ -1,0 +1,47 @@
+{
+ "real": {
+  "err_color": 0.016517125070095062,
+  "err_size": 0.10844072916308209,
+  "err_gravity": 0.029148324886565765,
+  "err_wind": 0.0396711668062687,
+  "err_ghost": 0.03290806181284367,
+  "err_noise": 0.0027302497078216643,
+  "err_shape": 0.0,
+  "err_hold": 0.0,
+  "instr_acc": 0.9453125,
+  "copy_rate": 0.03125,
+  "giant_ratio_on": 2.1740847178455565,
+  "giant_ratio_off": 0.9958398413943554,
+  "context_score": 0.2060915148331759
+ },
+ "wrong": {
+  "err_color": 0.3457464575767517,
+  "err_size": 1.0405375017368523,
+  "err_gravity": 0.0414125667552358,
+  "err_wind": 0.06478689191452777,
+  "err_ghost": 0.2912800702262691,
+  "err_noise": 0.0403997248222756,
+  "err_shape": 0.625,
+  "err_hold": 0.65625,
+  "instr_acc": 0.90625,
+  "copy_rate": 0.03125,
+  "giant_ratio_on": 1.9574961100774966,
+  "giant_ratio_off": 0.9729884657463352,
+  "context_score": 1.0
+ },
+ "copy": {
+  "err_color": 0.01784820854663849,
+  "err_size": 0.9581726780255895,
+  "err_gravity": 0.01825033044721007,
+  "err_wind": 0.02278782638974619,
+  "err_ghost": 0.03147905802521979,
+  "err_noise": 0.0021952503983338127,
+  "err_shape": 0.03125,
+  "err_hold": 0.0,
+  "instr_acc": 0.171875,
+  "copy_rate": 1.0,
+  "giant_ratio_on": 0.9985102399561916,
+  "giant_ratio_off": 0.9947585053913275,
+  "context_score": 0.24716331388705254
+ }
+}

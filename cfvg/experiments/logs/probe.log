@@ -1,0 +1,26 @@
+step 0 loss 0.6011 1s
+step 250 loss 0.2608 89s
+step 500 loss 0.1689 184s
+step 750 loss 0.1588 274s
+step 1000 loss 0.1455 362s
+step 1250 loss 0.0750 453s
+step 1500 loss 0.0421 542s
+step 1750 loss 0.0315 633s
+step 2000 loss 0.0258 722s
+step 2250 loss 0.0239 813s
+bg_r     MAE 0.0123  R2 0.996
+bg_g     MAE 0.0127  R2 0.996
+bg_b     MAE 0.0130  R2 0.996
+fg_r     MAE 0.0260  R2 0.988
+fg_g     MAE 0.0249  R2 0.988
+fg_b     MAE 0.0264  R2 0.987
+size     MAE 0.1054  R2 0.995
+gravity  MAE 0.0319  R2 0.879
+wind     MAE 0.0328  R2 0.593
+ghost    MAE 0.0384  R2 0.947
+noise    MAE 0.0026  R2 0.993
+x0       MAE 0.2125  R2 0.998
+y0       MAE 0.1515  R2 0.997
+vx       MAE 0.1629  R2 0.906
+vy       MAE 0.1413  R2 0.913
+shape acc 0.9853515625 hold acc 1.0
