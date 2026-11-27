@@ -24,8 +24,8 @@ class Stream(torch.utils.data.IterableDataset):
         pool = ContextPool(a.pool or None, seed=a.pool_seed)       # same worlds for every worker
         pool.rng = np.random.default_rng(self.seed)                 # but fresh event draws
         while True:
-            refs, mask, tgt, text, *_ = make_batch(pool, a.bs, a.kmax, a.mode, leaky=a.leaky)
-            yield tuple(map(torch.from_numpy, (refs, mask, tgt, text)))
+            refs, mask, tgt, text, _, _, giant, wid = make_batch(pool, a.bs, a.kmax, a.mode, leaky=a.leaky)
+            yield tuple(map(torch.from_numpy, (refs, mask, tgt, text, giant, wid)))
 
 
 def main():
@@ -42,7 +42,8 @@ def main():
     ap.add_argument("--lr", type=float, default=5e-4)
     ap.add_argument("--threads", type=int, default=3)
     ap.add_argument("--depth", type=int, default=5)
-    ap.add_argument("--enc_depth", type=int, default=1)
+    ap.add_argument("--enc_depth", type=int, default=2)
+    ap.add_argument("--contrastive", type=float, default=0.1, help="weight of group-contrastive loss")
     a = ap.parse_args()
 
     torch.set_num_threads(a.threads)
@@ -72,9 +73,10 @@ def main():
                                          num_workers=1, prefetch_factor=4)
     log = open(f"{out}/log.jsonl", "a")
     t0, run = time.time(), []
-    for refs, mask, tgt, text in loader:
+    for refs, mask, tgt, text, giant, wid in loader:
         with torch.autocast("cpu", dtype=torch.bfloat16):
-            loss = flow_loss(model, refs, mask, tgt, text)
+            loss, stats = flow_loss(model, refs, mask, tgt, text, contrastive=a.contrastive,
+                                    world_id=wid, giant=giant)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -83,9 +85,10 @@ def main():
         with torch.no_grad():
             for pe, pm in zip(ema.parameters(), model.parameters()):
                 pe.lerp_(pm, 1 - decay)
-        run.append(loss.item())
+        run.append(stats)
         if step % 50 == 0:
-            rec = {"step": step, "loss": float(np.mean(run)), "sec": time.time() - t0}
+            rec = {"step": step, **{k: float(np.mean([r[k] for r in run])) for k in run[0]},
+                   "sec": time.time() - t0}
             log.write(json.dumps(rec) + "\n"); log.flush(); run = []
             if step % 250 == 0:
                 print(rec, flush=True)

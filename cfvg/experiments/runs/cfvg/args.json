@@ -11,5 +11,6 @@
  "lr": 0.0005,
  "threads": 3,
  "depth": 5,
- "enc_depth": 1
+ "enc_depth": 2,
+ "contrastive": 0.1
 }

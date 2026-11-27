@@ -103,35 +103,49 @@ class Block(nn.Module):
 class ContextEncoder(nn.Module):
     """Encodes a *set* of K clips. No clip-index embedding: order-invariant."""
 
-    def __init__(self, d, heads, depth, bottleneck):
+    def __init__(self, d, heads, depth, bottleneck, rounds=2):
         super().__init__()
         self.inp = nn.Linear(PATCH_DIM, d)
         self.register_buffer("pos", sincos_pos(d), persistent=False)
         self.blocks = nn.ModuleList([Block(d, heads, cross=(), cond=False) for _ in range(depth)])
         self.bottleneck = bottleneck
+        self.h_norm = nn.LayerNorm(d)
         if bottleneck:
-            self.queries = nn.Parameter(torch.randn(bottleneck, d) * 0.02)
-            self.resample = Attn(d, heads)
-            self.post = Block(d, heads, cross=(), cond=False)
+            # distinct queries from the start, so they do not all average the same tokens
+            self.queries = nn.Parameter(torch.randn(bottleneck, d))
+            self.q_norm = nn.ModuleList([nn.LayerNorm(d) for _ in range(rounds)])
+            self.resample = nn.ModuleList([Attn(d, heads) for _ in range(rounds)])
+            self.post = nn.ModuleList([Block(d, heads, cross=(), cond=False) for _ in range(rounds)])
         self.out_norm = nn.LayerNorm(d)
+        self.proj = nn.Sequential(nn.Linear(d, d), nn.GELU(), nn.Linear(d, 64))   # contrastive head
 
     def forward(self, refs, ref_mask):
         B, K = refs.shape[:2]
         h = self.inp(patchify(refs.flatten(0, 1))) + self.pos
         for blk in self.blocks:                       # each clip encoded alone
             h = blk(h)
-        h = h.view(B, K * N_TOK, -1)
+        h = self.h_norm(h.view(B, K * N_TOK, -1))
         tok_mask = ref_mask.repeat_interleave(N_TOK, 1)
         if not self.bottleneck:
             return self.out_norm(h), tok_mask
-        q = self.queries[None].expand(B, -1, -1)
-        z = q + self.resample(q, h, tok_mask)        # attends over all clips' tokens
-        z = self.post(z)
+        z = self.queries[None].expand(B, -1, -1)
+        for qn, ra, post in zip(self.q_norm, self.resample, self.post):
+            z = z + ra(qn(z), h, tok_mask)            # attends over all clips' tokens
+            z = post(z)
         return self.out_norm(z), None
+
+    def embed(self, ctx, ctx_mask):
+        """One normalised vector per sample, for the group-contrastive loss."""
+        if ctx_mask is None:
+            pooled = ctx.mean(1)
+        else:
+            m = ctx_mask.float().unsqueeze(-1)
+            pooled = (ctx * m).sum(1) / m.sum(1)
+        return F.normalize(self.proj(pooled).float(), dim=-1)
 
 
 class CFVG(nn.Module):
-    def __init__(self, d=128, heads=4, depth=6, enc_depth=2, bottleneck=16, text_len=5):
+    def __init__(self, d=128, heads=4, depth=5, enc_depth=2, bottleneck=16, text_len=5):
         super().__init__()
         self.encoder = ContextEncoder(d, heads, enc_depth, bottleneck)
         self.inp = nn.Linear(PATCH_DIM, d)
@@ -175,9 +189,14 @@ def velocity(x_hat, x_t, t):
     return (x_hat - x_t) / (1 - t).clamp(min=0.05).view(-1, 1, 1, 1, 1)
 
 
-def flow_loss(model, refs, ref_mask, target, text, p_drop_text=0.1):
+def flow_loss(model, refs, ref_mask, target, text, p_drop_text=0.1, contrastive=0.0,
+              world_id=None, giant=None):
     """Rectified flow: x_t = t * x + (1 - t) * eps. The network predicts the clean
-    video x; the loss is on the implied velocity v = x - eps."""
+    video x; the loss is on the implied velocity v = x - eps.
+
+    contrastive > 0 adds the group-contrastive loss of the design doc (4.3): the
+    context read from the references must match the context read from the target
+    clip alone (same world, different events) and differ from other worlds."""
     B = target.shape[0]
     t = torch.sigmoid(torch.randn(B))                 # logit-normal timesteps
     eps = torch.randn_like(target)
@@ -187,7 +206,24 @@ def flow_loss(model, refs, ref_mask, target, text, p_drop_text=0.1):
     text = torch.where(drop[:, None], torch.full_like(text, NULL_TOKEN), text)
     ctx, ctx_mask = model.encode(refs, ref_mask)
     v = velocity(model(x_t, t, ctx, ctx_mask, text), x_t, t)
-    return F.mse_loss(v.float(), target - eps)
+    loss = F.mse_loss(v.float(), target - eps)
+    stats = {"flow": loss.item()}
+    if contrastive > 0:
+        keep = ~giant if giant is not None else torch.ones(B, dtype=torch.bool)
+        tgt_ctx, tgt_mask = model.encode(target[keep, None], torch.ones(int(keep.sum()), 1, dtype=torch.bool))
+        a = model.encoder.embed(ctx[keep], None if ctx_mask is None else ctx_mask[keep])
+        b = model.encoder.embed(tgt_ctx, tgt_mask)
+        logits = a @ b.T / 0.1
+        if world_id is not None:                      # same world elsewhere in the batch: not a negative
+            w = world_id[keep]
+            same = (w[:, None] == w[None]) & ~torch.eye(len(w), dtype=torch.bool)
+            logits = logits.masked_fill(same, -1e4)
+        lab = torch.arange(len(logits))
+        nce = 0.5 * (F.cross_entropy(logits, lab) + F.cross_entropy(logits.T, lab))
+        stats["nce"] = nce.item()
+        stats["nce_acc"] = (logits.argmax(1) == lab).float().mean().item()
+        loss = loss + contrastive * nce
+    return loss, stats
 
 
 @torch.no_grad()

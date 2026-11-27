@@ -15,15 +15,16 @@ run() {  # name, args...
 }
 
 # E1  core claim: independent targets vs replication-style training
-run cfvg          --mode cfvg
-run paired        --mode paired
+run cfvg            --mode cfvg
+run cfvg_nocontrast --mode cfvg --contrastive 0     # E5: is the group-contrastive loss needed?
+run paired          --mode paired
 # E2  does the bottleneck matter, once the objective already forbids copying?
-run cfvg_direct   --mode cfvg   --bottleneck 0
-run paired_direct --mode paired --bottleneck 0
+run cfvg_direct     --mode cfvg   --bottleneck 0
 # E3  zero-shot generalisation vs the number of distinct worlds seen in training
-run pool30        --pool 30
-run pool300       --pool 300
-run pool3000      --pool 3000
+run pool30          --pool 30
+run pool300         --pool 300
+run pool3000        --pool 3000
 # E4  captions that leak the world
-run leaky         --leaky
+run leaky           --leaky
+run paired_direct   --mode paired --bottleneck 0
 echo ALL_DONE

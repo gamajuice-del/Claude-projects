@@ -135,6 +135,18 @@ def sample_contexts(rng, n, split="train") -> Context:
     )
 
 
+def sample_sibling_contexts(rng, n, split="train") -> Context:
+    """Worlds in adjacent pairs (0,1), (2,3), ... that share background colour and
+    sensor noise but differ in everything else: hard negatives that can only be
+    told apart by the object, its physics and its animation (design doc 4.3)."""
+    m = (n + 1) // 2
+    a, b = sample_contexts(rng, m, split), sample_contexts(rng, m, split)
+    b.bg, b.noise = a.bg.copy(), a.noise.copy()
+    order = np.stack([np.arange(m), np.arange(m) + m], 1).reshape(-1)[:n]
+    both = Context(*(np.concatenate([getattr(a, f), getattr(b, f)]) for f in Context.__dataclass_fields__))
+    return both.take(order)
+
+
 def sample_content(rng, n) -> Content:
     return Content(*(rng.uniform(lo, hi, n) for lo, hi in CONTENT_RANGES.values()))
 
@@ -231,12 +243,20 @@ class ContextPool:
     def __init__(self, pool_size: int | None, seed: int, split="train"):
         self.rng = np.random.default_rng(seed)
         self.split = split
-        self.pool = sample_contexts(self.rng, pool_size, split) if pool_size else None
+        # worlds come in sibling pairs (see sample_sibling_contexts); a batch is
+        # drawn pair by pair so every world meets its hard negative
+        self.pool = sample_sibling_contexts(self.rng, pool_size, split) if pool_size else None
+        self.last_ids = None      # world identity of the last draw (for contrastive negatives)
+        self._next = 0
 
     def draw(self, n) -> Context:
         if self.pool is None:
-            return sample_contexts(self.rng, n, self.split)
-        return self.pool.take(self.rng.integers(0, len(self.pool.size), n))
+            self.last_ids = np.arange(self._next, self._next + n)
+            self._next += n
+            return sample_sibling_contexts(self.rng, n, self.split)
+        pairs = self.rng.integers(0, len(self.pool.size) // 2, (n + 1) // 2)
+        self.last_ids = np.stack([2 * pairs, 2 * pairs + 1], 1).reshape(-1)[:n]
+        return self.pool.take(self.last_ids)
 
 
 def _distinct_content(rng, ref_bins_list, n, min_diff=2, tries=20):
@@ -287,4 +307,4 @@ def make_batch(pool: ContextPool, n: int, k_max: int, mode: str = "cfvg",
         raise ValueError(mode)
     target = render(ctx, c, giant, rng=rng) if mode == "cfvg" else refs[:, 0].copy()
     text = make_text(c, giant, ctx if leaky else None)
-    return refs, ref_mask, target, text, ctx, c, giant
+    return refs, ref_mask, target, text, ctx, c, giant, pool.last_ids.copy()
