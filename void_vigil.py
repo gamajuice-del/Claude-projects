@@ -165,7 +165,7 @@ def _bez(p0, p1, p2, u):
             (1 - u) ** 2 * p0[1] + 2 * (1 - u) * u * p1[1] + u * u * p2[1])
 
 
-def radiance_sprite(t):
+def radiance_sprite(t, lift_amp=0.9):
     """Her silhouette on her own grid: 'B' void body, 'F' feather, 'l' a line
     of faint light (the reference's outlines, inverted).  Wings lift with t."""
     gh, gw = 64, 2 * RAD_CX + 1
@@ -176,7 +176,7 @@ def radiance_sprite(t):
         if 0 <= r < gh and 0 <= c < gw and (not only_empty or g[r][c] == '.'):
             g[r][c] = ch
 
-    lift = 0.9 * math.sin(TAU * t)
+    lift = lift_amp * math.sin(TAU * t)
     # feathers, lowest first; each one's upper edge is a line of light
     for k, (p0, p1, p2, w0) in enumerate(FEATHERS):
         sway = lift * (0.4 + 0.12 * k)
@@ -247,11 +247,11 @@ def radiance_sprite(t):
 RAD_VALUE = {'B': 0.8, 'F': 2.4, 'l': 6.6}
 
 
-def radiance_field(t):
+def radiance_field(t, lift_amp=0.9):
     """Density D and her own value R, placed in the scene."""
     D = np.zeros((H, W))
     R = np.zeros((H, W))
-    g = radiance_sprite(t)
+    g = radiance_sprite(t, lift_amp)
     for r, row in enumerate(g):
         for c, ch in enumerate(row):
             if ch != '.':
@@ -638,7 +638,7 @@ def draw_knight(cv):
         cv.put(x, y, c)
 
 
-def draw_ground_detail(cv, gtop):
+def draw_ground_detail(cv, gtop, heart=True):
     rnd = random.Random(12)
     # grass and thorn tufts along the mound's lit edge
     for x in range(2, W - 2):
@@ -672,7 +672,8 @@ def draw_ground_detail(cv, gtop):
                      (46, 2, RAMP[4]), (18, 6, RAMP[3]), (110, 5, RAMP[3])):
         cv.put(x, gtop[x] + dy, c)
     # the lost Void Heart, cracked, a few steps from the Knight
-    cv.sprite(76, gtop[78] - 3, VOID_HEART, VOID_HEART_KEY)
+    if heart:
+        cv.sprite(76, gtop[78] - 3, VOID_HEART, VOID_HEART_KEY)
     cv.put(80, gtop[80], (70, 64, 100))            # a chip broken off it
     # small pale flowers near the Knight's feet
     for x, c in ((52, MOTE), (54, RAMP[12]), (86, RAMP[12])):
